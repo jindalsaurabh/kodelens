@@ -1,12 +1,13 @@
-// typings/web-tree-sitter.d.ts
-
 declare module "web-tree-sitter" {
-  // Augment the default export to include constructor + init
   export default class Parser {
-    static init(): Promise<void>;   // add missing static
-    constructor();                  // allow `new Parser()`
-
-    setLanguage(language: any): void;
+    static init(moduleOptions?: any): Promise<void>;
+    constructor();
+    setLanguage(lang: any): this;
     parse(input: string): any;
+    static Language: {
+      load(
+        source: string | ArrayBuffer | Uint8Array
+      ): Promise<any>;
+    };
   }
 }
