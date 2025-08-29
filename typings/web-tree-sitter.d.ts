@@ -5,9 +5,7 @@ declare module "web-tree-sitter" {
     setLanguage(lang: any): this;
     parse(input: string): any;
     static Language: {
-      load(
-        source: string | ArrayBuffer | Uint8Array
-      ): Promise<any>;
+      load(source: string | ArrayBuffer | Uint8Array): Promise<any>;
     };
   }
 }

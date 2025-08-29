@@ -9,11 +9,7 @@
     "strict": true,
     "types": ["node"],
     "typeRoots": ["./typings", "./node_modules/@types"],
-
-    /* Important! */
-    "skipLibCheck": true,       /* Skip type-checking of declaration files */
-    "esModuleInterop": true,    /* Allow default imports from CJS modules */
-    "forceConsistentCasingInFileNames": true
+    "skipLibCheck": true
   },
   "include": ["src", "typings"],
   "exclude": [
@@ -25,4 +21,3 @@
     "tree-sitter-sfapex/**/*"
   ]
 }
-
