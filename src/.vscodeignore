@@ -1,0 +1,23 @@
+# Ignore node stuff
+node_modules/**
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+
+# Ignore source files (we only ship compiled dist)
+src/**
+tree-sitter-sfapex/**
+typings/**
+
+# Ignore test & build artifacts
+out/**
+dist/**/*.map
+**/*.test.ts
+
+# Ignore editor/system junk
+.vscode/**
+.DS_Store
+
+# Don’t include extra media, only what's inside dist
+media/**
+!dist/media/**
