@@ -1,59 +1,87 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
 
-let Parser: any;
-let parser: any;
-
-async function initializeParser(): Promise<void> {
-  if (parser) return;
-  
-  try {
-    const extensionPath = vscode.extensions.getExtension('your-publisher.kodelens')?.extensionPath;
-    if (!extensionPath) throw new Error('Extension path not found');
-    
-    // Require from copied module location
-    const modulePath = path.join(extensionPath, 'dist', 'node_modules', 'web-tree-sitter');
-    Parser = require(modulePath);
-    
-    // Initialize with WASM from extension directory
-    const wasmPath = path.join(extensionPath, 'dist', 'tree-sitter.wasm');
-    await Parser.init({ locateFile: () => wasmPath });
-    
-    parser = new Parser();
-    
-    // Load Apex language
-    const apexWasmPath = path.join(extensionPath, 'dist', 'tree-sitter-sfapex.wasm');
-    const Apex = await Parser.Language.load(apexWasmPath);
-    parser.setLanguage(Apex);
-    
-    console.log('✓ Parser initialized successfully');
-  } catch (error) {
-    console.error('Failed to initialize parser:', error);
-    throw error;
-  }
+// Minimal type definitions for web-tree-sitter
+interface TreeSitterLanguage {
+    // Language instance methods would go here
 }
 
-export function activate(context: vscode.ExtensionContext) {
-  const command = vscode.commands.registerCommand('kodelens.analyzeCode', async () => {
+interface TreeSitterParser {
+    setLanguage(language: TreeSitterLanguage): void;
+    parse(code: string): TreeSitterTree;
+}
+
+interface TreeSitterTree {
+    rootNode: TreeSitterNode;
+}
+
+interface TreeSitterNode {
+    type: string;
+    toString(): string;
+}
+
+interface TreeSitterModule {
+    default: {
+        init(options: { locateFile: (fileName: string) => string }): Promise<void>;
+        new (): TreeSitterParser;
+    };
+    Language: {
+        load(wasmPath: string): Promise<TreeSitterLanguage>;
+    };
+}
+
+export async function activate(context: vscode.ExtensionContext) {
     try {
-      await initializeParser();
-      
-      const editor = vscode.window.activeTextEditor;
-      if (!editor) {
-        vscode.window.showWarningMessage('No active editor');
-        return;
-      }
-      
-      const code = editor.document.getText();
-      const tree = parser.parse(code);
-      
-      vscode.window.showInformationMessage(`Parsed ${tree.rootNode.namedChildCount} top-level nodes`);
+        // Load WASM files from extension distribution
+        const runtimeWasmPath = context.asAbsolutePath(
+            path.join('media', 'runtime', 'tree-sitter.wasm')
+        );
+        const apexWasmPath = context.asAbsolutePath(
+            path.join('media', 'apex', 'tree-sitter-apex.wasm')
+        );
+
+        // Verify WASM files exist
+        if (!fs.existsSync(runtimeWasmPath) || !fs.existsSync(apexWasmPath)) {
+            throw new Error('WASM files not found. Rebuild extension with proper packaging.');
+        }
+
+        // Import web-tree-sitter with proper type casting
+        const ParserModule = await import('web-tree-sitter') as unknown as TreeSitterModule;
+        
+        await ParserModule.default.init({ locateFile: () => runtimeWasmPath });
+        
+        // Load the Apex language
+        const ApexLang = await ParserModule.Language.load(apexWasmPath);
+        
+        // Create parser instance
+        const Parser = ParserModule.default;
+        const parser = new Parser();
+        parser.setLanguage(ApexLang);
+
+        const outputChannel = vscode.window.createOutputChannel('Kodelens');
+        
+        const parseCommand = vscode.commands.registerCommand('kodelens.parseApex', () => {
+            const editor = vscode.window.activeTextEditor;
+            if (!editor || editor.document.languageId !== 'apex') {
+                vscode.window.showWarningMessage('Please open an Apex file to use this command');
+                return;
+            }
+
+            const sourceCode = editor.document.getText();
+            const tree = parser.parse(sourceCode);
+            
+            outputChannel.clear();
+            outputChannel.appendLine(`=== AST Analysis for ${path.basename(editor.document.fileName)} ===`);
+            outputChannel.appendLine(tree.rootNode.toString());
+            outputChannel.show(true);
+        });
+
+        context.subscriptions.push(parseCommand, outputChannel);
+        
     } catch (error) {
-      vscode.window.showErrorMessage(`Parser error: ${error}`);
+        vscode.window.showErrorMessage(`Kodelens initialization failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-  });
-  
-  context.subscriptions.push(command);
 }
 
 export function deactivate() {}

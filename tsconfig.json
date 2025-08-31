@@ -9,11 +9,12 @@
     "strict": true,
     "skipLibCheck": true,
     "types": ["node"],
+    "typeRoots": ["./typings", "./node_modules/@types"],
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "moduleResolution": "node16"
   },
-  "include": ["src"],
+  "include": ["src/**/*", "typings/**/*"],
   "exclude": [
     "node_modules",
     "dist",
