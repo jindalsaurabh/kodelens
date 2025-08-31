@@ -11,16 +11,11 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:kodelens.helloWorld",
     "onCommand:kodelens.parseApex"
   ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
-      {
-        "command": "kodelens.helloWorld",
-        "title": "Kodelens: Hello World"
-      },
       {
         "command": "kodelens.parseApex",
         "title": "Kodelens: Parse Apex File"
@@ -32,7 +27,8 @@
     "lint": "eslint src --ext .ts",
     "compile": "npm run check-types && npm run lint && node esbuild.js --production",
     "build-apex-wasm": "cd tree-sitter-sfapex/apex && tree-sitter build --wasm && mkdir -p ../../media/apex && cp tree-sitter-apex.wasm ../../media/apex/",
-    "package": "npm run compile && npx vsce package"
+    "package": "npm run compile && npx vsce package",
+    "vscode:prepublish": "npm run compile"
   },
   "dependencies": {
     "web-tree-sitter": "^0.25.8"
@@ -53,10 +49,7 @@
     "type": "git",
     "url": "https://github.com/jindalsaurabh/kodelens.git"
   },
-  "files": [
-    "dist/**",
-    "package.json",
-    "readme.md",
-    "LICENSE.txt"
-  ]
+  "vsce": {
+    "ignoreFile": ".vscodeignore"
+  }
 }

@@ -1,0 +1,15 @@
+.gitignore
+.vscode-test.mjs
+dist/media/
+eslint.config.mjs
+original-package.json
+changelog.md
+.vscode/
+test/
+tree-sitter-sfapex/
+typings/
+src/
+tsconfig.json
+esbuild.js
+node_modules/
+.DS_Store
