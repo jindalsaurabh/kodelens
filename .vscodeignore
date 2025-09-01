@@ -1,15 +1,34 @@
+# Build and development files
 .gitignore
 .vscode-test.mjs
-dist/media/
 eslint.config.mjs
 original-package.json
-changelog.md
-.vscode/
+tsconfig.json
+esbuild.js
+package.json.clean
+
+# Source and test files
+src/
 test/
 tree-sitter-sfapex/
 typings/
-src/
-tsconfig.json
-esbuild.js
+.vscode/
+
+# Dependencies and build artifacts
 node_modules/
+dist/**/*.map
+out/
+dist/media/
+
+# System files
 .DS_Store
+
+# Media files (except those needed for distribution)
+media/**
+!media/runtime/tree-sitter.wasm
+!media/apex/tree-sitter-apex.wasm
+
+# Ensure unbundled files are included
+!media/runtime/tree-sitter.js
+!media/runtime/tree-sitter.wasm
+!media/apex/tree-sitter-apex.wasm

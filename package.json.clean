@@ -30,6 +30,9 @@
     "package": "npm run compile && npx vsce package",
     "vscode:prepublish": "npm run compile"
   },
+  "dependencies": {
+    "web-tree-sitter": "^0.25.8"
+  },
   "devDependencies": {
     "@types/node": "22.x",
     "@types/vscode": "^1.103.0",
@@ -45,8 +48,5 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/jindalsaurabh/kodelens.git"
-  },
-  "dependencies": {
-    "web-tree-sitter": "^0.20.8"
   }
 }
