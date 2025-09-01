@@ -17,7 +17,7 @@ export function extractChunksFromAst(rootNode: any, fileContent: string): RawCod
     // Recursive function to walk the tree
     function walk(node: any) {
         if (targetNodeTypes.has(node.type)) {
-            // This is a node we want to chunk. Extract its text.
+            // This is the node we want to chunk. Extract its text.
             const chunkText = node.text;
             chunks.push({
                 type: node.type,
@@ -26,7 +26,6 @@ export function extractChunksFromAst(rootNode: any, fileContent: string): RawCod
                 endPosition: node.endPosition
             });
             // We don't walk children of a chunked node to avoid nested chunks
-            return;
         }
 
         // If it's not a target node, walk all its children.
