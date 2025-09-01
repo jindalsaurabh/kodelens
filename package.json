@@ -28,18 +28,25 @@
     "compile": "npm run check-types && npm run lint && node esbuild.js --production",
     "build-apex-wasm": "cd tree-sitter-sfapex/apex && tree-sitter build --wasm && mkdir -p ../../media/apex && cp tree-sitter-apex.wasm ../../media/apex/",
     "package": "npm run compile && npx vsce package",
-    "vscode:prepublish": "npm run compile"
+    "vscode:prepublish": "npm run compile",
+    "test": "mocha -r ts-node/register/transpile-only \"test/**/*.test.ts\""
   },
   "devDependencies": {
+    "@types/chai": "^5.2.2",
+    "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
     "@types/vscode": "^1.103.0",
     "@typescript-eslint/eslint-plugin": "^8.39.0",
     "@typescript-eslint/parser": "^8.39.0",
     "@vscode/vsce": "^3.6.0",
+    "chai": "^6.0.1",
     "esbuild": "^0.25.9",
     "esbuild-plugin-copy": "^2.1.1",
     "eslint": "^9.32.0",
+    "esm": "^3.2.25",
+    "mocha": "^11.7.1",
     "tree-sitter-sfapex": "github:aheber/tree-sitter-sfapex#3597575",
+    "ts-node": "^10.9.2",
     "typescript": "^5.9.2"
   },
   "repository": {
@@ -47,6 +54,7 @@
     "url": "https://github.com/jindalsaurabh/kodelens.git"
   },
   "dependencies": {
+    "better-sqlite3": "^12.2.0",
     "web-tree-sitter": "^0.20.8"
   }
 }
