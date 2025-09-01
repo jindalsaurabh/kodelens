@@ -6,16 +6,6 @@ export async function activate(context: vscode.ExtensionContext) {
     const outputChannel = vscode.window.createOutputChannel('Kodelens-Debug');
     outputChannel.show(true);
     outputChannel.appendLine('=== Kodelens Debug Initialization ===');
-    
-    try {
-        // Safe debug info inside activate function
-        const webTreeSitterPkg = require('web-tree-sitter/package.json');
-        outputChannel.appendLine(`web-tree-sitter version: ${webTreeSitterPkg.version}`);
-        outputChannel.appendLine(`Node.js: ${process.version}, Platform: ${process.platform}/${process.arch}`);
-        
-    } catch (error) {
-        outputChannel.appendLine(`Debug info unavailable: ${error}`);
-    }
 
     try {
         outputChannel.appendLine('1. Getting extension paths...');
@@ -43,38 +33,23 @@ export async function activate(context: vscode.ExtensionContext) {
 
         outputChannel.appendLine('3. Importing web-tree-sitter...');
         
-        const webTreeSitter = await import('web-tree-sitter') as unknown as {
-            Parser: {
-                init(options: { locateFile: (fileName: string, scriptDirectory?: string) => string }): Promise<void>;
-                new (): any;
-            };
-            Language: {
-                load(wasmPath: string): Promise<any>;
-            };
-        };
+        const webTreeSitterModule = await import('web-tree-sitter');
+        outputChannel.appendLine(`Module keys: ${Object.keys(webTreeSitterModule).join(', ')}`);
 
-        outputChannel.appendLine('✓ web-tree-sitter imported successfully');
-        outputChannel.appendLine(`Module keys: ${Object.keys(webTreeSitter).join(', ')}`);
-
-        outputChannel.appendLine('4. Accessing Parser and Language...');
-        const Parser = webTreeSitter.Parser;
-        const Language = webTreeSitter.Language;
-
+        // v0.25.8: The default export is the Parser constructor
+        const Parser = webTreeSitterModule.default;
         outputChannel.appendLine(`Parser type: ${typeof Parser}`);
-        outputChannel.appendLine(`Language type: ${typeof Language}`);
+        outputChannel.appendLine(`Parser available: ${!!Parser}`);
 
-        if (!Parser || !Language) {
-            outputChannel.appendLine(`✗ Parser: ${!!Parser}, Language: ${!!Language}`);
-            vscode.window.showErrorMessage('web-tree-sitter Parser or Language is null');
+        if (!Parser) {
+            outputChannel.appendLine('✗ Parser is null/undefined');
+            vscode.window.showErrorMessage('web-tree-sitter Parser is null');
             return;
         }
 
-        outputChannel.appendLine('5. Checking Parser methods...');
+        outputChannel.appendLine('4. Checking Parser methods...');
         const hasInit = typeof Parser.init === 'function';
-        const hasLanguageLoad = typeof Language.load === 'function';
-
         outputChannel.appendLine(`Has init(): ${hasInit}`);
-        outputChannel.appendLine(`Has Language.load(): ${hasLanguageLoad}`);
 
         if (!hasInit) {
             outputChannel.appendLine('✗ Parser.init is not a function');
@@ -82,55 +57,34 @@ export async function activate(context: vscode.ExtensionContext) {
             return;
         }
 
-        outputChannel.appendLine('6. Initializing parser with file:// URLs...');
+        outputChannel.appendLine('5. Initializing parser...');
         try {
-            // Convert file paths to file:// URLs - this is the key fix
-            const runtimeWasmUrl = `file://${runtimeWasmPath}`;
-            const apexWasmUrl = `file://${apexWasmPath}`;
-            
-            outputChannel.appendLine(`Runtime WASM URL: ${runtimeWasmUrl}`);
-            outputChannel.appendLine(`Apex WASM URL: ${apexWasmUrl}`);
-
-            await Parser.init({
-                locateFile: (fileName: string, scriptDirectory?: string) => {
-                    outputChannel.appendLine(`locateFile request: "${fileName}" in "${scriptDirectory || 'no directory'}"`);
-                    //outputChannel.appendLine(`locateFile request: "${fileName}" in "${scriptDirectory}"`);
-                    
-                    if (fileName === 'tree-sitter.wasm') {
-                        return runtimeWasmUrl;
-                    }
-                    
-                    // For any other files (including language WASM files), use file:// URLs
-                    if (fileName.endsWith('.wasm')) {
-                        const baseDir = scriptDirectory ? path.dirname(scriptDirectory) : path.dirname(runtimeWasmPath);
-                        //const requestedPath = path.join(path.dirname(runtimeWasmPath), fileName);
-                        const requestedPath = path.join(baseDir, fileName);
-                        if (fs.existsSync(requestedPath)) {
-                            return `file://${requestedPath}`;
-                        }
-                    }
-                    
-                    // Fallback - return the filename as-is
-                    return fileName;
-                }
-            });
-            outputChannel.appendLine('✓ Parser initialized successfully with file:// URLs');
+            // Initialize first, then Language becomes available
+            await Parser.init();
+            outputChannel.appendLine('✓ Parser initialized successfully');
         } catch (initError) {
             outputChannel.appendLine(`✗ Parser.init failed: ${initError}`);
-            if (initError instanceof Error && initError.stack) {
-                outputChannel.appendLine(`Full stack trace: ${initError.stack}`);
-            }
             vscode.window.showErrorMessage(`Parser initialization failed: ${initError}`);
             return;
         }
 
-        outputChannel.appendLine('7. Loading Apex language with file:// URL...');
+        outputChannel.appendLine('6. Accessing Language after initialization...');
+        // After init(), Language becomes available as a static property
+        const Language = (Parser as any).Language;
+        outputChannel.appendLine(`Parser.Language: ${typeof Language}`);
+        outputChannel.appendLine(`Parser.Language available: ${!!Language}`);
+
+        if (!Language) {
+            outputChannel.appendLine('✗ Language not found on Parser after initialization');
+            vscode.window.showErrorMessage('Language not found on Parser after initialization');
+            return;
+        }
+
+        outputChannel.appendLine('7. Loading Apex language...');
         let ApexLang;
         try {
-            // Use file:// URL for language loading too
-            const apexWasmUrl = `file://${apexWasmPath}`;
-            ApexLang = await Language.load(apexWasmUrl);
-            outputChannel.appendLine('✓ Apex language loaded successfully with file:// URL');
+            ApexLang = await Language.load(apexWasmPath);
+            outputChannel.appendLine('✓ Apex language loaded successfully');
         } catch (loadError) {
             outputChannel.appendLine(`✗ Apex language load failed: ${loadError}`);
             vscode.window.showErrorMessage(`Failed to load Apex language: ${loadError}`);
