@@ -60,11 +60,10 @@ export async function activate(context: vscode.ExtensionContext) {
         outputChannel.appendLine('5. Initializing parser with WASM buffer...');
 try {
     // Use WASM buffer approach for Node.js compatibility
-    //const wasmBuffer = fs.readFileSync(runtimeWasmPath);
-    //outputChannel.appendLine(`WASM buffer size: ${wasmBuffer.length} bytes`);
+    const wasmBuffer = fs.readFileSync(runtimeWasmPath);
+    outputChannel.appendLine(`WASM buffer size: ${wasmBuffer.length} bytes`);
     
-    //await Parser.init({ wasm: wasmBuffer });
-    await Parser.init({ locateFile: () => runtimeWasmPath });
+    await Parser.init({ wasm: wasmBuffer });
     outputChannel.appendLine('✓ Parser initialized successfully with WASM buffer');
     
     // NOW access Language after successful initialization
