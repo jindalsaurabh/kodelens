@@ -60,10 +60,11 @@ export async function activate(context: vscode.ExtensionContext) {
         outputChannel.appendLine('5. Initializing parser with WASM buffer...');
 try {
     // Use WASM buffer approach for Node.js compatibility
-    const wasmBuffer = fs.readFileSync(runtimeWasmPath);
-    outputChannel.appendLine(`WASM buffer size: ${wasmBuffer.length} bytes`);
+    //const wasmBuffer = fs.readFileSync(runtimeWasmPath);
+    //outputChannel.appendLine(`WASM buffer size: ${wasmBuffer.length} bytes`);
     
-    await Parser.init({ wasm: wasmBuffer });
+    //await Parser.init({ wasm: wasmBuffer });
+    await Parser.init({ locateFile: () => runtimeWasmPath });
     outputChannel.appendLine('✓ Parser initialized successfully with WASM buffer');
     
     // NOW access Language after successful initialization
@@ -118,8 +119,8 @@ try {
         const parseCommand = vscode.commands.registerCommand('kodelens.parseApex', () => {
             outputChannel.appendLine('Command invoked: kodelens.parseApex');
             const editor = vscode.window.activeTextEditor;
-            if (!editor || !editor.document.fileName.endsWith('.cls')) {
-                vscode.window.showWarningMessage('Please open an Apex (.cls) file to use this command');
+            if (!editor || !(/\.(cls|trigger)$/i).test(editor.document.fileName)) {
+                vscode.window.showWarningMessage('Please open an Apex (.cls or .trigger) file to use this command');
                 return;
             }
 

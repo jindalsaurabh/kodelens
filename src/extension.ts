@@ -119,8 +119,8 @@ try {
         const parseCommand = vscode.commands.registerCommand('kodelens.parseApex', () => {
             outputChannel.appendLine('Command invoked: kodelens.parseApex');
             const editor = vscode.window.activeTextEditor;
-            if (!editor || !editor.document.fileName.endsWith('.cls')) {
-                vscode.window.showWarningMessage('Please open an Apex (.cls) file to use this command');
+            if (!editor || !(/\.(cls|trigger)$/i).test(editor.document.fileName)) {
+                vscode.window.showWarningMessage('Please open an Apex (.cls or .trigger) file to use this command');
                 return;
             }
 
