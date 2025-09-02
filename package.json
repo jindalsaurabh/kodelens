@@ -13,6 +13,9 @@
   "activationEvents": [
     "onCommand:kodelens.parseApex"
   ],
+  "vsce": {
+  "includeDependencies": true
+},
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
@@ -29,9 +32,11 @@
     "build-apex-wasm": "cd tree-sitter-sfapex/apex && tree-sitter build --wasm && mkdir -p ../../media/apex && cp tree-sitter-apex.wasm ../../media/apex/",
     "package": "npm run compile && npx vsce package",
     "vscode:prepublish": "npm run compile",
-    "test": "mocha -r ts-node/register/transpile-only \"test/**/*.test.ts\""
+    "test": "mocha -r ts-node/register/transpile-only \"test/**/*.test.ts\"",
+    "clean": "rm -rf dist"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/chai": "^5.2.2",
     "@types/mocha": "^10.0.10",
     "@types/node": "22.x",
@@ -54,7 +59,8 @@
     "url": "https://github.com/jindalsaurabh/kodelens.git"
   },
   "dependencies": {
-    "better-sqlite3": "^12.2.0",
+    "@vscode/sqlite3": "^5.1.8-vscode",
+    "electron": "^37.2.3",
     "web-tree-sitter": "^0.20.8"
   }
 }

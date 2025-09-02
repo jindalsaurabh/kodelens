@@ -1,33 +1,34 @@
-# Exclude Build and development files
+# Default ignores for VS Code extensions
+.vscode/**
+.vscode-test/**
+src/**
 .gitignore
-.vscode-test.mjs
-.vscode/
-eslint.config.mjs
-original-package.json
+.yarnrc
+vsc-extension-quickstart.md
+**/*.map
+**/.gitkeep
+esbuild.js
 tsconfig.json
-esbuild*.js
-package.json.clean
-original-package.json
+tsconfig.test.json
 
-# Exclude source & tests
-src/
-test/
-tree-sitter-sfapex/
-typings/
-.vscode/
+# Ignore all node_modules EXCEPT the critical native dependency
+node_modules/**
+!node_modules/@vscode/sqlite3/package.json
+!node_modules/@vscode/sqlite3/lib/**
+!node_modules/@vscode/sqlite3/build/Release/**
 
-# Exclude dependencies & artifacts
-node_modules/
+# Ignore test and development files
+test/**
+typings/**
+
+# Ignore CI and dev configuration files (adjust as needed)
+.github/**
+.gitlab-ci.yml
+.travis.yml
+
+# Ignore local development artifacts
+*.vsix
 dist/**/*.map
-out/
-#dist/media/
 
-# System files
-.DS_Store
-
-# Exclude ALL media files, then re-include only needed ones
-# Media files (except those needed for distribution)
-media/**
-!media/runtime/tree-sitter.js
-!media/runtime/tree-sitter.wasm
-!media/apex/tree-sitter-apex.wasm
+# Ignore tre-sitter-sfapex
+tree-sitter-sfapex/**
