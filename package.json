@@ -22,7 +22,11 @@
       {
         "command": "kodelens.parseApex",
         "title": "Kodelens: Parse Apex File"
-      }
+      },
+      {
+    "command": "kodelens.askQuestion",
+    "title": "Kodelens: Ask a Question"
+}
     ]
   },
   "scripts": {
