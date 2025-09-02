@@ -1,5 +1,6 @@
 // src/database.ts
 import sqlite3 from '@vscode/sqlite3';
+import { CodeChunk } from './types'; // Import the interface
 
 export class LocalCache {
     private db: sqlite3.Database;
@@ -30,6 +31,40 @@ export class LocalCache {
                     reject(err);
                 } else {
                     resolve();
+                }
+            });
+        });
+    }
+
+    async findChunksByKeywords(keywords: string[]): Promise<CodeChunk[]> {
+        if (keywords.length === 0) {
+            return [];
+        }
+        // Create a query: chunk_text LIKE '%keyword1%' OR chunk_text LIKE '%keyword2%'
+        const likeConditions = keywords.map(keyword => `chunk_text LIKE '%${keyword}%'`).join(' OR ');
+        const sql = `SELECT * FROM code_chunks WHERE ${likeConditions} LIMIT 20`;
+        console.log('Executing SQL:', sql); // <-- ADD THIS LINE
+        
+        return new Promise((resolve, reject) => {
+            this.db.all(sql, [], (err, rows: any[]) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    // Map database rows to CodeChunk objects
+                    const chunks: CodeChunk[] = rows.map(row => ({
+                        type: row.chunk_type,
+                        text: row.chunk_text, // Map 'chunk_text' to 'text'
+                        hash: row.chunk_hash,
+                        startPosition: { 
+                            row: row.start_line, 
+                            column: row.start_column 
+                        },
+                        endPosition: { 
+                            row: row.end_line, 
+                            column: row.end_column 
+                        }
+                    }));
+                    resolve(chunks);
                 }
             });
         });
