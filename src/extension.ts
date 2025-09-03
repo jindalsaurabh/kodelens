@@ -5,12 +5,39 @@ import * as crypto from 'crypto';
 import { initializeParser } from './parser';
 import { LocalCache } from './database';
 import { extractChunksFromAst, normalizeText, generateHash } from './chunking';
-// Import the new retrieval function
 import { findRelevantChunks } from './retrieval';
+import { CodeIndexer } from './CodeIndexer';
+import { ResultsProvider, ResultItem } from './ResultsProvider'; // Fixed import
+
+
+
+let codeIndexer: CodeIndexer;
+let resultsProvider: ResultsProvider;
+let resultsTreeView: vscode.TreeView<ResultItem>;
 
 export async function activate(context: vscode.ExtensionContext) {
+    
     const outputChannel = vscode.window.createOutputChannel('Kodelens-Debug');
     outputChannel.show(true);
+
+    // Initialize the indexer and parser
+    codeIndexer = new CodeIndexer();
+    
+    // Initialize the results provider
+    resultsProvider = new ResultsProvider();
+    
+    // Create the tree view
+    resultsTreeView = vscode.window.createTreeView('kodelens-results', {
+        treeDataProvider: resultsProvider,
+        showCollapseAll: true
+    });
+
+    // Initialize the parser with the extension path
+    codeIndexer.initialize(context.extensionPath).then(() => {
+        console.log('Parser initialized successfully');
+    }).catch(error => {
+        vscode.window.showErrorMessage(`Failed to initialize parser: ${error}`);
+    });
 
     outputChannel.appendLine('=== Kodelens Initialization ===');
     outputChannel.appendLine(`Extension installed at: ${context.extensionPath}`);
@@ -177,8 +204,201 @@ export async function activate(context: vscode.ExtensionContext) {
             }
         });
 
-        // Add both commands to subscriptions
-        context.subscriptions.push(parseCommand, askCommand, outputChannel);
+        // Register the parseWorkspaceCommand command
+
+const parseWorkspaceCommand = vscode.commands.registerCommand('kodelens.parseWorkspace', async () => {
+    outputChannel.appendLine('Command invoked: kodelens.parseWorkspace');
+    
+    if (!vscode.workspace.workspaceFolders) {
+        vscode.window.showWarningMessage('Please open a workspace folder first.');
+        return;
+    }
+
+    // 1. Get the database path (same as parse command)
+    const storageUri = context.globalStorageUri;
+    await vscode.workspace.fs.createDirectory(storageUri);
+    const dbPath = vscode.Uri.joinPath(storageUri, 'kodelens-cache.sqlite').fsPath;
+
+    let cache: LocalCache | undefined;
+    
+    // 2. Add progress reporting
+    await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: "Kodelens: Parsing workspace Apex files...",
+        cancellable: true
+    }, async (progress, token) => {
+        token.onCancellationRequested(() => {
+            outputChannel.appendLine("User cancelled workspace parsing.");
+        });
+
+        cache = new LocalCache(dbPath);
+        await cache.init();
+
+        try {
+            // Find all Apex files in the workspace
+            const apexFiles = await vscode.workspace.findFiles(
+                '**/*.{cls,trigger}', // Glob pattern for Apex files
+                '**/node_modules/**'   // Exclude node_modules
+            );
+
+            outputChannel.appendLine(`Found ${apexFiles.length} Apex files in workspace.`);
+            progress.report({ message: `Found ${apexFiles.length} files to process...` });
+
+            let totalChunks = 0;
+            let processedFiles = 0;
+
+            // Process each file
+            for (const fileUri of apexFiles) {
+                // Check if user cancelled
+                if (token.isCancellationRequested) {
+                    break;
+                }
+
+                try {
+                    processedFiles++;
+                    progress.report({ 
+                        message: `Processing file ${processedFiles}/${apexFiles.length}`,
+                        increment: (1 / apexFiles.length) * 100 
+                    });
+
+                    const document = await vscode.workspace.openTextDocument(fileUri);
+                    const sourceCode = document.getText();
+                    const fileHash = crypto.createHash('sha256').update(sourceCode).digest('hex');
+                    
+                    // Parse and chunk
+                    const tree = parser.parse(sourceCode);
+                    if (!tree) {
+                        outputChannel.appendLine(`Failed to parse: ${fileUri.fsPath}`);
+                        continue;
+                    }
+                    
+                    const rawChunks = extractChunksFromAst(tree.rootNode, sourceCode);
+                    
+                    // Store chunks
+                    for (const rawChunk of rawChunks) {
+                        const normalizedText = normalizeText(rawChunk.text);
+                        const chunkHash = generateHash(normalizedText);
+                        const processedChunk = {
+                            ...rawChunk,
+                            hash: chunkHash,
+                            text: normalizedText
+                        };
+                        await cache.insertChunk(processedChunk, fileUri.fsPath, fileHash);
+                        totalChunks++;
+                    }
+                    
+                    outputChannel.appendLine(`Processed ${fileUri.fsPath} (${rawChunks.length} chunks)`);
+                    
+                } catch (error) {
+                    outputChannel.appendLine(`Error processing ${fileUri.fsPath}: ${error}`);
+                }
+            }
+
+            vscode.window.showInformationMessage(`Workspace parsing complete. Processed ${totalChunks} chunks from ${processedFiles} files.`);
+            
+        } catch (error) {
+            outputChannel.appendLine(`Workspace parsing failed: ${error}`);
+            vscode.window.showErrorMessage(`Workspace parsing failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        } finally {
+            if (cache) {
+                cache.close();
+            }
+        }
+    });
+});
+
+
+// Register the findReferences command
+
+  const findReferencesDisposable = vscode.commands.registerCommand('kodelens.findReferences', async () => {
+    // New logic will go here.
+    vscode.window.showInformationMessage('Find All References command triggered!');
+
+// Get the active text editor
+
+        if (!codeIndexer) {
+            vscode.window.showErrorMessage('Code indexer not ready yet. Please try again.');
+            return;
+        }
+
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+      vscode.window.showErrorMessage('No active editor found!');
+      return;
+    }
+
+    // Get the user's selection (the word they want to find references for)
+    const selection = editor.selection;
+    const wordRange = editor.document.getWordRangeAtPosition(selection.start);
+    if (!wordRange) {
+      vscode.window.showErrorMessage('Please place your cursor on a word to find its references.');
+      return;
+    }
+
+    // Get the exact word/symbol from the document
+    const symbolName = editor.document.getText(wordRange);
+
+    // Show progress
+    vscode.window.withProgress({
+    location: vscode.ProgressLocation.Notification,
+    title: `Finding references for: ${symbolName}`,
+    cancellable: false 
+    }, async (progress) => {
+    progress.report({ increment: 0 });
+
+    // First, build the index if needed
+    await codeIndexer.buildIndex();
+    
+    progress.report({ increment: 50 });
+
+    const stats = codeIndexer.getIndexStats();
+    console.log('Indexing complete');
+    console.log('Index stats:', stats);
+
+    // Then find references
+    const references = codeIndexer.findReferences(symbolName);
+    progress.report({ increment: 100 });
+        
+    // Update the results view
+    resultsProvider.refresh(references);        
+    // Show the results view
+    //resultsTreeView.reveal(references[0], { focus: true, select: false });
+
+    // Show the results view - Convert CodeSymbol to ResultItem first
+    if (references.length > 0) {
+        const firstResultItem = new ResultItem(references[0]);
+        resultsTreeView.reveal(firstResultItem, { focus: true, select: false });
+    }
+
+    if (references.length === 0) {
+        vscode.window.showInformationMessage(`No references found for: ${symbolName}`);
+    } else {
+        vscode.window.showInformationMessage(`Found ${references.length} references for: ${symbolName}`);
+
+    // TODO: Show the results in a panel (next step)
+    console.log('References found:', references);
+    }
+
+    // Show a message with the symbol we're going to search for
+    vscode.window.showInformationMessage(`Finding references for: ${symbolName}`);
+
+    // TODO: Phase 1 - Build the code index for the entire workspace
+    // This will be our next major task
+    const files = await vscode.workspace.findFiles('**/*.cls', '**/node_modules/**');
+    vscode.window.showInformationMessage(`Found ${files.length} Apex files to index.`);
+
+    // TODO: Phase 2 - Parse each file with tree-sitter and find references to ${symbolName}
+    // This will be our core logic
+
+    // TODO: Phase 3 - Display the results in a panel
+    // This will be our UI work
+
+});
+
+  });
+
+        // Add the commands to subscriptions
+        context.subscriptions.push(parseCommand, askCommand, parseWorkspaceCommand, findReferencesDisposable, outputChannel);
         outputChannel.appendLine('=== Kodelens Ready ===');
 
     } catch (error) {

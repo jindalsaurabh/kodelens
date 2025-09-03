@@ -86,3 +86,5 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+#test files
+test/snapshots/sampleFiles/*
