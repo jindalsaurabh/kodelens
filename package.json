@@ -26,8 +26,30 @@
       {
     "command": "kodelens.askQuestion",
     "title": "Kodelens: Ask a Question"
-}
+      },
+      {
+      "command": "kodelens.parseWorkspace",
+      "title": "Kodelens: Parse Workspace"
+    },
+    {
+      "command": "kodelens.findReferences",
+      "title": "KodeLens: Find All References"
+    }
+    ],
+      "views": {
+    "explorer": [
+        {
+            "id": "kodelens-results",
+            "name": "KodeLens Results"
+        }
     ]
+},
+"viewsWelcome": [
+    {
+        "view": "kodelens-results",
+        "contents": "No search results yet. Use [KodeLens: Find All References](command:kodelens.findReferences) to find references to a symbol."
+    }
+]
   },
   "scripts": {
     "check-types": "tsc --noEmit",
@@ -37,7 +59,9 @@
     "package": "npm run compile && npx vsce package",
     "vscode:prepublish": "npm run compile",
     "test": "mocha -r ts-node/register/transpile-only \"test/**/*.test.ts\"",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "reinstall": "npm run compile && npm run package && code --uninstall-extension kodelens.kodelens && code --install-extension kodelens-0.0.1.vsix"
+
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

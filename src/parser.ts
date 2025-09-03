@@ -2,6 +2,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
 
+
 // Initialize and return a parser instance
 export async function initializeParser(extensionPath: string) {
     // Dynamically import web-tree-sitter
@@ -12,8 +13,6 @@ export async function initializeParser(extensionPath: string) {
     const extensionMediaPath = path.join(extensionPath, 'media');
     const runtimeWasmPath = path.join(extensionMediaPath , 'runtime', 'tree-sitter.wasm');
     const apexWasmPath = path.join(extensionMediaPath, 'apex', 'tree-sitter-apex.wasm');
-
-    
 
     // Check files exist (better error messages)
     if (!fs.existsSync(runtimeWasmPath)) {
