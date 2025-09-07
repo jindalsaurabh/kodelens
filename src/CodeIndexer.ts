@@ -82,7 +82,13 @@ export class CodeIndexer {
 
             // Use the pre-initialized parser
             const tree = this.parser.parse(code);
+            if (!tree) {
+            console.warn(`Failed to parse ${fileUri.fsPath}: parser returned null tree`);
+            return;
+        }
             const rootNode = tree.rootNode;
+            const fileSymbols = this.extractSymbolsFromAST(rootNode, fileUri.fsPath);
+            this.symbols.push(...fileSymbols);
 
             // DEBUG: See the AST structure for the first file only to avoid too much output
             if (this.symbols.length === 0) {
@@ -91,14 +97,15 @@ export class CodeIndexer {
                 console.log('=== END DEBUG ===');
             }
 
-            const fileSymbols = this.extractSymbolsFromAST(rootNode, fileUri.fsPath);
-            this.symbols.push(...fileSymbols);
-            
+            //const fileSymbols = this.extractSymbolsFromAST(rootNode, fileUri.fsPath);
             if (fileSymbols.length > 0) {
                 console.log(`Indexed ${fileSymbols.length} symbols from ${path.basename(fileUri.fsPath)}`);
             }
         } catch (error) {
             console.error(`Failed to index file ${fileUri.fsPath}:`, error);
+            vscode.window.showWarningMessage(
+            `KodeLens: Could not parse ${path.basename(fileUri.fsPath)}. Syntax errors may affect search results.`
+        );
         }
     }
 
