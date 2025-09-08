@@ -7,6 +7,10 @@ module.exports = {
   transform: {
     "^.+\\.ts$": ["ts-jest", { tsconfig: "tsconfig.json" }],
   },
+  moduleNameMapper: {
+    '^vscode$': '<rootDir>/__mocks__/vscode.ts',
+  },
   verbose: true,
   clearMocks: true,
 };
+

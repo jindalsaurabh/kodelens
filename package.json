@@ -34,7 +34,11 @@
       {
         "command": "kodelens.findReferences",
         "title": "KodeLens: Find All References"
-      }
+      },
+      {
+      "command": "kodelens.debugParseFile",
+      "title": "Kodelens: Debug Parse File"
+    }
     ],
     "views": {
       "explorer": [
@@ -86,7 +90,6 @@
   },
   "dependencies": {
     "@vscode/sqlite3": "^5.1.8-vscode",
-    "electron": "^37.2.3",
     "web-tree-sitter": "^0.20.8"
   }
 }
