@@ -30,5 +30,40 @@ typings/**
 *.vsix
 dist/**/*.map
 
+#Ignore temporary folder created during packaging
+tmp_vsix/**
+
 # Ignore tre-sitter-sfapex
 tree-sitter-sfapex/**
+
+# Media assets: only include runtime and apex folders
+!media/runtime/**
+!media/apex/**
+
+
+# Misc
+.DS_Store
+
+
+
+# Ignore everything by default
+#*
+
+# Include the built extension
+#!dist/extension.js
+
+# Include only the WASM files needed
+#!dist/*
+##!dist/media/runtime/tree-sitter.wasm
+##!dist/media/apex/tree-sitter-apex.wasm
+
+# Optional: Include license/readme if desired
+#!LICENSE.txt
+#!readme.md
+#!changelog.md
+
+# Ignore all node_modules EXCEPT the critical native dependency
+#node_modules/**
+#!node_modules/@vscode/sqlite3/package.json
+#!node_modules/@vscode/sqlite3/lib/**
+#!node_modules/@vscode/sqlite3/build/Release/**

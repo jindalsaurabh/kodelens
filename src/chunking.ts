@@ -1,56 +1,71 @@
 // src/chunking.ts
-import * as crypto from 'crypto';
-import { RawCodeChunk, CodeChunk } from './types';
-
 /**
- * Normalizes code text for consistent processing and hashing.
- * @param text The raw code string from the AST.
- * @returns The normalized string.
+ * Walks the AST recursively and extracts Apex constructs as "chunks".
+ * Each chunk is normalized, hashed, and tagged with location info.
+ * Returns CodeChunk[] ready for DB insert/search.
  */
 
-// src/chunking.ts (add this function)
-export function extractChunksFromAst(rootNode: any, fileContent: string): RawCodeChunk[] {
-    const chunks: RawCodeChunk[] = [];
-    // Types of nodes we want to chunk
-    const targetNodeTypes = new Set(['class_declaration', 'method_declaration']);
+// src/chunking.ts
+import { SyntaxNode } from "web-tree-sitter";
+import { CodeChunk } from "./types";
+//import { generateHash } from "./chunking";
 
-    // Recursive function to walk the tree
-    function walk(node: any) {
-        if (targetNodeTypes.has(node.type)) {
-            // This is the node we want to chunk. Extract its text.
-            const chunkText = node.text;
-            chunks.push({
-                type: node.type,
-                text: chunkText,
-                startPosition: node.startPosition,
-                endPosition: node.endPosition
-            });
-            // We don't walk children of a chunked node to avoid nested chunks
-        }
+/**
+ * Extract code "chunks" from an AST node for storage.
+ * Ensures all required fields are populated and types are consistent.
+ */
+export function extractChunks(filePath: string, rootNode: SyntaxNode): CodeChunk[] {
+  const chunks: CodeChunk[] = [];
 
-        // If it's not a target node, walk all its children.
-        if (node.children) {
-            for (const child of node.children) {
-                walk(child);
-            }
-        }
+  function traverse(node: SyntaxNode) {
+    // Only consider named nodes that have some content
+    if (!node || !node.type || node.text.trim() === "") {return;}
+
+    const startPosition = {
+      row: Number(node.startPosition.row ?? 0),
+      column: Number(node.startPosition.column ?? 0),
+    };
+    const endPosition = {
+      row: Number(node.endPosition.row ?? 0),
+      column: Number(node.endPosition.column ?? 0),
+    };
+
+    const chunkText = node.text ?? "";
+
+    const chunk: CodeChunk = {
+      id: generateHash(`${filePath}:${chunkText}:${startPosition.row}:${startPosition.column}`),
+      name: node.type ?? "unknown",
+      type: node.type ?? "unknown",
+      code: chunkText,
+      text: chunkText,
+      hash: generateHash(chunkText),
+      filePath,
+      startLine: startPosition.row,
+      endLine: endPosition.row,
+      range: {
+        start: startPosition,
+        end: endPosition,
+      } as any, // vscode.Range will be built in LocalCache if needed
+      startPosition,
+      endPosition,
+    };
+
+    chunks.push(chunk);
+
+    // Recursively traverse child nodes
+    for (let i = 0; i < node.namedChildCount; i++) {
+      const child = node.namedChild(i);
+      if (child) {traverse(child);}
     }
+  }
 
-    // Start the walk from the root node
-    walk(rootNode);
-    return chunks;
+  traverse(rootNode);
+  return chunks;
 }
 
-export function normalizeText(text: string): string {
-    // Trim whitespace. Add other normalization rules here later if needed.
-    return text.trim();
+// Named export
+export function generateHash(input: string): string {
+  const crypto = require("crypto");
+  return crypto.createHash("sha256").update(input).digest("hex");
 }
 
-/**
- * Generates a SHA-256 hash of the given text.
- * @param text The input text (should be normalized first).
- * @returns A hexadecimal string representing the hash.
- */
-export function generateHash(text: string): string {
-    return crypto.createHash('sha256').update(text).digest('hex');
-}

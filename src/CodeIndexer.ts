@@ -1,44 +1,38 @@
-// src/CodeIndexer.ts
-import * as vscode from 'vscode';
-import * as path from 'path';
-import { initializeParser } from './parser';
+import * as vscode from "vscode";
+import * as path from "path";
+import { safeParse } from "./services/parserService";
+import { normalizeCode } from "./services/normalize";
+import { sha256Hex } from "./services/crypto";
+import { CodeChunk } from "./types";
 
-export interface CodeSymbol {
-    name: string;
-    type: string; // 'class', 'method', 'property', 'variable', 'interface'
-    filePath: string;
-    range: vscode.Range;
-    parent?: string; // parent class or namespace
-}
-
+/**
+ * CodeIndexer is responsible for indexing files in a workspace.
+ * It normalizes code, hashes content, parses the AST, and prepares metadata for chunking and caching.
+ */
 export class CodeIndexer {
-    private symbols: CodeSymbol[] = [];
-    private isIndexing = false;
-    private parser: any = null; // Will hold the parser instance
+  private workspaceRoot: string;
+  private context: vscode.ExtensionContext;
 
-    // Initialize the parser (call this once at activation)
-    async initialize(extensionPath: string): Promise<void> {
-        try {
-            this.parser = await initializeParser(extensionPath);
-            console.log('Parser initialized successfully');
-        } catch (error) {
-            vscode.window.showErrorMessage(`Failed to initialize parser: ${error}`);
-            throw error;
-        }
-    }
+  constructor(workspaceRoot: string, context: vscode.ExtensionContext) {
+    this.workspaceRoot = workspaceRoot;
+    this.context = context;
+  }
 
-    // Build the index for the entire workspace
-    async buildIndex(): Promise<void> {
-        if (!this.parser) {
-            vscode.window.showErrorMessage('Parser not initialized. Call initialize() first.');
-            return;
-        }
+  /**
+   * Index a single file: normalize, hash, parse.
+   * @param filePath Absolute path of the file.
+   * @param content File content as string.
+   * @returns Object containing filePath, hash, and AST rootNode, or null on failure.
+   */
+  async indexFile(filePath: string, content: string): Promise<{ filePath: string; hash: string; ast: any } | null> {
+    try {
+      const normalized = normalizeCode(content);
+      const hash = sha256Hex(normalized);
 
-        if (this.isIndexing) {
-            vscode.window.showWarningMessage('Indexing already in progress...');
-            return;
-        }
+      // Parse code using workspace-aware singleton parser
+      const tree = await safeParse(this.workspaceRoot, this.context, normalized);
 
+<<<<<<< HEAD
         this.isIndexing = true;
         const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left);
         status.text = '$(sync~spin) KodeLens: Indexing...';
@@ -211,107 +205,24 @@ export class CodeIndexer {
                 }
             }
         }
+=======
+      if (!tree) {
+        console.warn(`Skipping ${filePath}, parse failed`);
+>>>>>>> 6aca314 (Singleton parser + commands: parseApexCommand,askCommand, parseWorkspaceCommand, findReferencesDisposable in src/extension.ts - working)
         return null;
-    }
+      }
 
-    // Helper method to convert tree-sitter range to VS Code range
-    private getRange(node: any): vscode.Range {
-        return new vscode.Range(
-            node.startPosition.row,
-            node.startPosition.column,
-            node.endPosition.row,
-            node.endPosition.column
-        );
+      return {
+        filePath,
+        hash,
+        ast: tree.rootNode, // downstream chunking will use this
+      };
+    } catch (err) {
+      console.error(`Indexing failed for ${filePath}`, err);
+      vscode.window.showErrorMessage(
+        `KodeLens: Indexing failed for ${path.basename(filePath)}`
+      );
+      return null;
     }
-
-    // Find references to a specific symbol - WITH DEBUGGING
-    findReferences(symbolName: string): CodeSymbol[] {
-        console.log(`Searching for references to: "${symbolName}"`);
-        
-        const results: CodeSymbol[] = [];
-        const exactMatches: CodeSymbol[] = [];
-        const partialMatches: CodeSymbol[] = [];
-        
-        // Convert to lowercase for case-insensitive search
-        const searchTerm = symbolName.toLowerCase();
-        
-        for (const symbol of this.symbols) {
-            const symbolNameLower = symbol.name.toLowerCase();
-            
-            if (symbolNameLower === searchTerm) {
-                exactMatches.push(symbol);
-            } else if (symbolNameLower.includes(searchTerm)) {
-                partialMatches.push(symbol);
-            }
-        }
-        
-        console.log(`Found ${exactMatches.length} exact matches and ${partialMatches.length} partial matches`);
-        
-        // Log the first few matches for debugging
-        if (exactMatches.length > 0) {
-            console.log('Exact matches:', exactMatches.slice(0, 3).map(s => `${s.type} "${s.name}"`));
-        }
-        if (partialMatches.length > 0) {
-            console.log('Partial matches:', partialMatches.slice(0, 3).map(s => `${s.type} "${s.name}"`));
-        }
-        
-        // Return exact matches first, then partial matches
-        return [...exactMatches, ...partialMatches];
-    }
-
-    // Get statistics about the index
-    getIndexStats(): { totalSymbols: number; byType: Record<string, number> } {
-        const byType: Record<string, number> = {};
-        
-        for (const symbol of this.symbols) {
-            byType[symbol.type] = (byType[symbol.type] || 0) + 1;
-        }
-        
-        return {
-            totalSymbols: this.symbols.length,
-            byType
-        };
-    }
-
-    // Get all symbols of a specific type
-    getSymbolsByType(type: string): CodeSymbol[] {
-        return this.symbols.filter(symbol => symbol.type === type);
-    }
-
-    // Clear the index
-    clearIndex(): void {
-        this.symbols = [];
-    }
-
-    // Check if indexing is in progress
-    isCurrentlyIndexing(): boolean {
-        return this.isIndexing;
-    }
-
-    // Get the total number of symbols in index
-    getTotalSymbols(): number {
-        return this.symbols.length;
-    }
-
-    // Add the debug method to help with AST exploration
-    private debugAST(node: any, depth: number = 0): void {
-        const indent = '  '.repeat(depth);
-        console.log(`${indent}${node.type}: "${node.text?.substring(0, 50)}"`);
-        
-        if (node.children && depth < 3) { // Limit depth to avoid too much output
-            for (const child of node.children) {
-                this.debugAST(child, depth + 1);
-            }
-        }
-    }
-
-    // Debug method to see what symbols we've extracted
-    private debugFirstFewSymbols(): void {
-        console.log('=== FIRST 20 SYMBOLS IN INDEX ===');
-        for (let i = 0; i < Math.min(20, this.symbols.length); i++) {
-            const symbol = this.symbols[i];
-            console.log(`${symbol.type} "${symbol.name}" in ${path.basename(symbol.filePath)}`);
-        }
-        console.log('=== END DEBUG ===');
-    }
+  }
 }

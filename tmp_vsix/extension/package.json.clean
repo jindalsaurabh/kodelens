@@ -1,0 +1,52 @@
+{
+  "name": "kodelens",
+  "displayName": "kodelens-vscode",
+  "publisher": "kodelens",
+  "description": "Talk to your code",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.103.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:kodelens.parseApex"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "kodelens.parseApex",
+        "title": "Kodelens: Parse Apex File"
+      }
+    ]
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src --ext .ts",
+    "compile": "npm run check-types && npm run lint && node esbuild.js --production",
+    "build-apex-wasm": "cd tree-sitter-sfapex/apex && tree-sitter build --wasm && mkdir -p ../../media/apex && cp tree-sitter-apex.wasm ../../media/apex/",
+    "package": "npm run compile && npx vsce package",
+    "vscode:prepublish": "npm run compile"
+  },
+  "dependencies": {
+    "web-tree-sitter": "^0.25.8"
+  },
+  "devDependencies": {
+    "@types/node": "22.x",
+    "@types/vscode": "^1.103.0",
+    "@typescript-eslint/eslint-plugin": "^8.39.0",
+    "@typescript-eslint/parser": "^8.39.0",
+    "@vscode/vsce": "^3.6.0",
+    "esbuild": "^0.25.9",
+    "esbuild-plugin-copy": "^2.1.1",
+    "eslint": "^9.32.0",
+    "tree-sitter-sfapex": "github:aheber/tree-sitter-sfapex#3597575",
+    "typescript": "^5.9.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jindalsaurabh/kodelens.git"
+  }
+}
