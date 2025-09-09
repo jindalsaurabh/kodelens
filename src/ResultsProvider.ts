@@ -1,15 +1,22 @@
 // src/ResultsProvider.ts
 import * as vscode from 'vscode';
-import { CodeSymbol } from './CodeIndexer';
+//import { CodeChunk } from './chunking';
+import { CodeChunk } from './types';
 
-
+/**
+ * TreeDataProvider to show search results in a tree view.
+ * Works with CodeChunk objects.
+ */
 export class ResultsProvider implements vscode.TreeDataProvider<ResultItem> {
     private _onDidChangeTreeData = new vscode.EventEmitter<ResultItem | undefined | void>();
     readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
-    private results: CodeSymbol[] = [];
+    private results: CodeChunk[] = [];
 
-    refresh(results: CodeSymbol[]): void {
+    /**
+     * Refresh the tree view with new results
+     */
+    setResults(results: CodeChunk[]): void {
         this.results = results;
         this._onDidChangeTreeData.fire();
     }
@@ -20,38 +27,41 @@ export class ResultsProvider implements vscode.TreeDataProvider<ResultItem> {
 
     getChildren(element?: ResultItem): Thenable<ResultItem[]> {
         if (element) {
-            // If we had nested items, they would go here
+            // Flat list → no children
             return Promise.resolve([]);
         } else {
-            // Return the main results
-            return Promise.resolve(this.results.map(symbol => new ResultItem(symbol)));
+            // Map CodeChunks to ResultItems
+            return Promise.resolve(this.results.map(chunk => new ResultItem(chunk)));
         }
     }
 
-    // ADD THIS METHOD TO FIX THE ERROR
     getParent(element: ResultItem): vscode.ProviderResult<ResultItem> {
-        // Since we have a flat list (no hierarchy), return undefined or null
+        // Flat list → no parent
         return null;
     }
 }
 
-// Add 'export' to make this class available to other files
+/**
+ * Represents a single chunk in the tree view
+ */
 export class ResultItem extends vscode.TreeItem {
-    constructor(public readonly symbol: CodeSymbol) {
-        super(symbol.name, vscode.TreeItemCollapsibleState.None);
-        
-        this.description = `${symbol.type} • ${this.getFileBasename(symbol.filePath)}`;
+    constructor(public readonly chunk: CodeChunk) {
+        super(chunk.name, vscode.TreeItemCollapsibleState.None);
+
+        this.description = `${chunk.type} • ${this.getFileBasename(chunk.filePath)}`;
         this.tooltip = this.getTooltip();
+
+        // Clicking opens the file at the exact range
         this.command = {
             command: 'vscode.open',
             title: 'Open File',
-            arguments: [vscode.Uri.file(symbol.filePath), {
-                selection: symbol.range
-            }]
+            arguments: [
+                vscode.Uri.file(chunk.filePath),
+                { selection: chunk.range }
+            ]
         };
-        
-        // Set appropriate icon based on symbol type
-        this.iconPath = this.getIconPath(symbol.type);
+
+        this.iconPath = this.getIconPath(chunk.type);
     }
 
     private getFileBasename(filePath: string): string {
@@ -59,7 +69,7 @@ export class ResultItem extends vscode.TreeItem {
     }
 
     private getTooltip(): string {
-        return `${this.symbol.type} ${this.symbol.name}\n${this.symbol.filePath}\nLine ${this.symbol.range.start.line + 1}`;
+        return `${this.chunk.type} ${this.chunk.name}\n${this.chunk.filePath}\nLine ${this.chunk.startLine + 1}`;
     }
 
     private getIconPath(type: string): vscode.ThemeIcon {
@@ -74,6 +84,8 @@ export class ResultItem extends vscode.TreeItem {
                 return new vscode.ThemeIcon('symbol-property');
             case 'variable':
                 return new vscode.ThemeIcon('symbol-variable');
+            case 'trigger':
+                return new vscode.ThemeIcon('symbol-event'); // For triggers
             default:
                 return new vscode.ThemeIcon('symbol-key');
         }
