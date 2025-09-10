@@ -12,7 +12,8 @@
     "typeRoots": ["./typings", "./node_modules/@types"],
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-    "moduleResolution": "node16"
+    "moduleResolution": "node16",
+    "isolatedModules": true,
   },
   "include": ["src/**/*", "typings/**/*"],
   "exclude": [

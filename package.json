@@ -59,20 +59,20 @@
       }
     ],
     "menus": {
-  "view/item/context": [
-    {
-      "command": "kodelens.clearResults",
-      "when": "view == kodelensResults",
-      "group": "navigation"
+      "view/item/context": [
+        {
+          "command": "kodelens.clearResults",
+          "when": "view == kodelensResults",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "kodelens.clearResults",
+          "when": "view == kodelensResults"
+        }
+      ]
     }
-  ],
-  "commandPalette": [
-    {
-      "command": "kodelens.clearResults",
-      "when": "view == kodelensResults"
-    }
-  ]
-}
   },
   "scripts": {
     "check-types": "tsc --noEmit",
@@ -113,6 +113,7 @@
   },
   "dependencies": {
     "@vscode/sqlite3": "^5.1.8-vscode",
+    "sqlite": "^5.1.1",
     "web-tree-sitter": "^0.20.8"
   }
 }

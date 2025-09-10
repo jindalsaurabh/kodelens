@@ -3,6 +3,9 @@ module.exports = {
   preset: "ts-jest",
   testEnvironment: "node",
   testMatch: ["**/test/**/*.test.ts"],
+  moduleNameMapper: {
+    "^vscode$": "<rootDir>/test/__mocks__/vscode.ts",
+  },
   moduleFileExtensions: ["ts", "js", "json"],
   transform: {
     "^.+\\.ts$": ["ts-jest", { tsconfig: "tsconfig.json" }],
