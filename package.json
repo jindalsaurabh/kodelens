@@ -36,6 +36,10 @@
         "title": "Kodelens: Parse Workspace"
       },
       {
+        "command": "kodelens.clearResults",
+        "title": "KodeLens: Clear Results"
+      },
+      {
         "command": "kodelens.findReferences",
         "title": "KodeLens: Find All References"
       }
@@ -53,10 +57,25 @@
         "view": "kodelens-results",
         "contents": "No search results yet. Use [KodeLens: Find All References](command:kodelens.findReferences) to find references to a symbol."
       }
-    ]
+    ],
+    "menus": {
+  "view/item/context": [
+    {
+      "command": "kodelens.clearResults",
+      "when": "view == kodelensResults",
+      "group": "navigation"
+    }
+  ],
+  "commandPalette": [
+    {
+      "command": "kodelens.clearResults",
+      "when": "view == kodelensResults"
+    }
+  ]
+}
   },
-"scripts": {
-  "check-types": "tsc --noEmit",
+  "scripts": {
+    "check-types": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
     "compile": "npm run check-types && npm run lint && node esbuild.js --production",
     "package": "npm run compile && npx vsce package",

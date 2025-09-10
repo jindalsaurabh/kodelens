@@ -8,12 +8,18 @@
 // src/chunking.ts
 import { SyntaxNode } from "web-tree-sitter";
 import { CodeChunk } from "./types";
-//import { generateHash } from "./chunking";
+import { generateHash } from "./utils";
+import * as vscode from "vscode";
 
 /**
  * Extract code "chunks" from an AST node for storage.
  * Ensures all required fields are populated and types are consistent.
  */
+/** Example: create hash for a chunk */
+export function createChunkId(chunk: CodeChunk): string {
+  return chunk.id ?? generateHash(chunk.code);
+}
+
 export function extractChunks(filePath: string, rootNode: SyntaxNode): CodeChunk[] {
   const chunks: CodeChunk[] = [];
 
@@ -32,6 +38,13 @@ export function extractChunks(filePath: string, rootNode: SyntaxNode): CodeChunk
 
     const chunkText = node.text ?? "";
 
+    rootNode.children.forEach((node: any) => {
+    const startLine = Number(node.startPosition.row ?? 0);
+    const startColumn = Number(node.startPosition.column ?? 0);
+    const endLine = Number(node.endPosition.row ?? 0);
+    const endColumn = Number(node.endPosition.column ?? 0);
+
+    /*
     const chunk: CodeChunk = {
       id: generateHash(`${filePath}:${chunkText}:${startPosition.row}:${startPosition.column}`),
       name: node.type ?? "unknown",
@@ -49,9 +62,25 @@ export function extractChunks(filePath: string, rootNode: SyntaxNode): CodeChunk
       startPosition,
       endPosition,
     };
+      */
 
+    const chunk: CodeChunk = {
+            id: generateHash(node.text),
+            name: node.type,
+            type: node.type,
+            code: node.text,
+            text: node.text,
+            hash: generateHash(node.text),
+            filePath,
+            startLine,
+            endLine,
+            startPosition: { row: startLine, column: startColumn },
+            endPosition: { row: endLine, column: endColumn },
+            range: new vscode.Range(startLine, startColumn, endLine, endColumn)
+        };  
+    
     chunks.push(chunk);
-
+  });
     // Recursively traverse child nodes
     for (let i = 0; i < node.namedChildCount; i++) {
       const child = node.namedChild(i);
@@ -61,11 +90,5 @@ export function extractChunks(filePath: string, rootNode: SyntaxNode): CodeChunk
 
   traverse(rootNode);
   return chunks;
-}
-
-// Named export
-export function generateHash(input: string): string {
-  const crypto = require("crypto");
-  return crypto.createHash("sha256").update(input).digest("hex");
 }
 
