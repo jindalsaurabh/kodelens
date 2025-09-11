@@ -8,7 +8,7 @@ const CHANNEL_NAME = 'KodeLens';
 let channel: vscode.OutputChannel | null = null;
 
 export function getOutputChannel() {
-  if (!channel) channel = vscode.window.createOutputChannel(CHANNEL_NAME);
+  if (!channel) {channel = vscode.window.createOutputChannel(CHANNEL_NAME);}
   return channel;
 }
 

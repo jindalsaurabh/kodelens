@@ -1,77 +1,50 @@
+// src/services/parserService.ts
 import * as vscode from "vscode";
-import * as path from "path";
-const Parser = require("web-tree-sitter");
+import { ParserSingleton } from "../adapters/parserSingleton";
 
-export type ParserState = {
-  parser: typeof Parser;
-  language: any;
-};
-
-// Map to keep one parser per workspace
-const workspaceParsers = new Map<string, Promise<ParserState>>();
+let initialized = false;
 
 /**
- * Initialize and return the ParserState (parser + language) for a workspace.
- * Ensures only one parser per workspace root.
+ * Initialize parser for the whole workspace.
+ * Should be called once during extension activation.
  */
 export async function initParserForWorkspace(
   workspaceRoot: string,
   context: vscode.ExtensionContext
-): Promise<ParserState> {
-  if (workspaceParsers.has(workspaceRoot)) {
-    return workspaceParsers.get(workspaceRoot)!;
+): Promise<void> {
+  if (initialized) {return;}
+
+  try {
+    const parser = ParserSingleton.getInstance();
+    await parser.init(context);
+    initialized = true;
+  } catch (err) {
+    const msg =
+      err instanceof Error ? err.message : "Unknown parser initialization error";
+    vscode.window.showErrorMessage(`Parser init failed: ${msg}`);
+    throw err;
   }
-
-  const initPromise = (async (): Promise<ParserState> => {
-    try {
-      // Absolute paths to WASM runtime + Apex grammar
-      const wasmRuntimePath = context.asAbsolutePath(
-        path.join("media", "runtime", "tree-sitter.wasm")
-      );
-      const apexWasmPath = context.asAbsolutePath(
-        path.join("media", "apex", "tree-sitter-apex.wasm")
-      );
-
-      console.log("WASM runtime path:", wasmRuntimePath);
-      console.log("Apex grammar path:", apexWasmPath);
-
-      // Initialize Tree-sitter runtime with FS path
-      await Parser.init({ wasmPath: wasmRuntimePath });
-
-      // Load Apex language
-      const ApexLang = await Parser.Language.load(apexWasmPath);
-
-      const parser = new Parser();
-      parser.setLanguage(ApexLang);
-
-      return { parser, language: ApexLang };
-    } catch (err) {
-      console.error("KodeLens Parser init error", err);
-      vscode.window.showErrorMessage(
-        `KodeLens: failed to initialize parser — ${String(err)}`
-      );
-      throw err;
-    }
-  })();
-
-  workspaceParsers.set(workspaceRoot, initPromise);
-  return initPromise;
 }
 
 /**
- * Safely parse text with workspace parser.
+ * Safe parse helper.
+ * Returns a tree or null if parsing fails.
  */
 export async function safeParse(
   workspaceRoot: string,
   context: vscode.ExtensionContext,
-  text: string
+  sourceCode: string
 ) {
   try {
-    const { parser } = await initParserForWorkspace(workspaceRoot, context);
-    return parser.parse(text);
+    if (!initialized) {
+      await initParserForWorkspace(workspaceRoot, context);
+    }
+
+    const parser = ParserSingleton.getInstance().getParser();
+    return parser.parse(sourceCode);
   } catch (err) {
-    console.error("KodeLens parse error", err);
-    vscode.window.showErrorMessage(`KodeLens: parse error — ${String(err)}`);
+    const msg = err instanceof Error ? err.message : String(err);
+    vscode.window.showErrorMessage(`Parse failed: ${msg}`);
     return null;
   }
 }

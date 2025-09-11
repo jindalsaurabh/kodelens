@@ -1,17 +1,12 @@
-// src/adapters/parserSingleton.ts - probable
-//import Parser from "web-tree-sitter";
-
-//const Parser = require("web-tree-sitter");
-
-//import * as Parser from "web-tree-sitter";
+// src/adapters/parserSingleton.ts
 import * as vscode from "vscode";
-import * as path from "path";
 const Parser = require("web-tree-sitter");
 
 export class ParserSingleton {
-  private static instance: ParserSingleton;
-  private treeParser: typeof Parser | null = null;
-  private language: any = null;
+  private static instance: ParserSingleton | null = null;
+  private treeParser: any | null = null;
+  private language: any | null = null;
+  private initialized = false;
 
   private constructor() {}
 
@@ -22,34 +17,32 @@ export class ParserSingleton {
     return ParserSingleton.instance;
   }
 
-  /** Initialize parser runtime + Apex grammar */
   public async init(context: vscode.ExtensionContext): Promise<void> {
-    if (this.treeParser) {return;} // already initialized
+    if (this.initialized) {return;}
 
-    const wasmRuntimePath = context.asAbsolutePath(
-      path.join("media", "runtime", "tree-sitter.wasm")
-    );
-    const apexWasmPath = context.asAbsolutePath(
-      path.join("media", "apex", "tree-sitter-apex.wasm")
-    );
+    const runtimePath = context.asAbsolutePath("media/runtime/tree-sitter.wasm");
+    const apexPath = context.asAbsolutePath("media/apex/tree-sitter-apex.wasm");
 
-    await Parser.init({ wasmPath: wasmRuntimePath });
+    await Parser.init({ wasmPath: runtimePath });
+    this.language = await Parser.Language.load(apexPath);
 
-    this.language = await Parser.Language.load(apexWasmPath);
     this.treeParser = new Parser();
     this.treeParser.setLanguage(this.language);
+
+    this.initialized = true;
   }
 
-  /** Get parser instance (throws if not initialized) */
-  public getParser(): typeof Parser {
-    if (!this.treeParser) {
-      throw new Error("Parser not initialized. Call init() first.");
+  public getParser(): any {
+    if (!this.initialized || !this.treeParser) {
+      throw new Error("ParserSingleton not initialized. Call init() first.");
     }
     return this.treeParser;
   }
 
-  /** Get language */
-  public getLanguage() {
+  public getLanguage(): any {
+    if (!this.initialized || !this.language) {
+      throw new Error("Language not initialized. Call init() first.");
+    }
     return this.language;
   }
 }
