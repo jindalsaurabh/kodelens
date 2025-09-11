@@ -2,7 +2,7 @@
 import sqlite3 from '@vscode/sqlite3';
 import * as vscode from 'vscode';
 import { CodeChunk } from './types';
-import { generateHash } from './chunking'; // for id/hash generation
+import { generateHash } from './utils'; // for id/hash generation
 
 export class LocalCache {
     private db: sqlite3.Database;
