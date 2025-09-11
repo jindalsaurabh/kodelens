@@ -64,12 +64,7 @@
     "build-apex-wasm": "cd tree-sitter-sfapex/apex && tree-sitter build --wasm && mkdir -p ../../media/apex && cp tree-sitter-apex.wasm ../../media/apex/",
     "vscode:prepublish": "npm run compile",
     "test": "jest",
-<<<<<<< HEAD
-    "clean": "rm -rf dist",
-    "reinstall": "npm run compile && npm run package && code --uninstall-extension kodelens.kodelens && code --install-extension kodelens-0.0.1.vsix"
-=======
     "clean": "rm -rf dist"
->>>>>>> 6aca314 (Singleton parser + commands: parseApexCommand,askCommand, parseWorkspaceCommand, findReferencesDisposable in src/extension.ts - working)
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
@@ -79,13 +74,10 @@
     "@typescript-eslint/eslint-plugin": "^8.39.0",
     "@typescript-eslint/parser": "^8.39.0",
     "@vscode/vsce": "^3.6.0",
-<<<<<<< HEAD
-=======
     "chai": "^6.0.1",
     "cpx": "^1.5.0",
     "electron": "^37.2.3",
     "electron-rebuild": "^3.2.9",
->>>>>>> 6aca314 (Singleton parser + commands: parseApexCommand,askCommand, parseWorkspaceCommand, findReferencesDisposable in src/extension.ts - working)
     "esbuild": "^0.25.9",
     "esbuild-plugin-copy": "^2.1.1",
     "eslint": "^9.32.0",

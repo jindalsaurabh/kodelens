@@ -1,71 +1,59 @@
-// src/chunking.ts
-/**
- * Walks the AST recursively and extracts Apex constructs as "chunks".
- * Each chunk is normalized, hashed, and tagged with location info.
- * Returns CodeChunk[] ready for DB insert/search.
- */
-
-// src/chunking.ts
-import { SyntaxNode } from "web-tree-sitter";
+// src/chunking.ts - probable
+import { Tree, SyntaxNode } from "web-tree-sitter";
 import { CodeChunk } from "./types";
-//import { generateHash } from "./chunking";
+import { generateHash } from "./utils"; // or your existing hash util
 
-/**
- * Extract code "chunks" from an AST node for storage.
- * Ensures all required fields are populated and types are consistent.
- */
+// Define node types we care about
+const MEANINGFUL_NODE_TYPES = new Set([
+  "class_declaration",
+  "method_declaration",
+  "interface_declaration",
+  "enum_declaration",
+  "trigger_declaration",
+  "variable_declaration",
+  "function_declaration",
+  "property_declaration",
+]);
+
 export function extractChunks(filePath: string, rootNode: SyntaxNode): CodeChunk[] {
   const chunks: CodeChunk[] = [];
 
   function traverse(node: SyntaxNode) {
-    // Only consider named nodes that have some content
-    if (!node || !node.type || node.text.trim() === "") {return;}
+    // Only process meaningful node types
+    if (MEANINGFUL_NODE_TYPES.has(node.type)) {
+      const text = node.text.trim();
+      if (text.length > 0) {
+        const startPosition = { row: node.startPosition.row, column: node.startPosition.column };
+        const endPosition = { row: node.endPosition.row, column: node.endPosition.column };
 
-    const startPosition = {
-      row: Number(node.startPosition.row ?? 0),
-      column: Number(node.startPosition.column ?? 0),
-    };
-    const endPosition = {
-      row: Number(node.endPosition.row ?? 0),
-      column: Number(node.endPosition.column ?? 0),
-    };
+        const chunk: CodeChunk = {
+          id: generateHash(text),
+          name: node.type,
+          type: node.type,
+          code: text,
+          text,
+          hash: generateHash(text),
+          filePath,
+          startLine: startPosition.row,
+          endLine: endPosition.row,
+          range: {
+            start: startPosition,
+            end: endPosition,
+          } as any,
+          startPosition,
+          endPosition,
+        };
 
-    const chunkText = node.text ?? "";
+        chunks.push(chunk);
+      }
+    }
 
-    const chunk: CodeChunk = {
-      id: generateHash(`${filePath}:${chunkText}:${startPosition.row}:${startPosition.column}`),
-      name: node.type ?? "unknown",
-      type: node.type ?? "unknown",
-      code: chunkText,
-      text: chunkText,
-      hash: generateHash(chunkText),
-      filePath,
-      startLine: startPosition.row,
-      endLine: endPosition.row,
-      range: {
-        start: startPosition,
-        end: endPosition,
-      } as any, // vscode.Range will be built in LocalCache if needed
-      startPosition,
-      endPosition,
-    };
-
-    chunks.push(chunk);
-
-    // Recursively traverse child nodes
-    for (let i = 0; i < node.namedChildCount; i++) {
-      const child = node.namedChild(i);
-      if (child) {traverse(child);}
+    // Recurse into children
+    for (const child of node.children) {
+      traverse(child);
     }
   }
 
   traverse(rootNode);
   return chunks;
 }
-
-// Named export
-export function generateHash(input: string): string {
-  const crypto = require("crypto");
-  return crypto.createHash("sha256").update(input).digest("hex");
-}
-
