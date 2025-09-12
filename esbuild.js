@@ -14,9 +14,11 @@ async function build() {
     platform: "node",
     external: [
       "vscode",
-      "@vscode/sqlite3",
+      'better-sqlite3',
+      'bindings',
+      'file-uri-to-path',
       "path",
-      "fs",
+      "fs"
     ],
     sourcemap: false,
     target: "node18",

@@ -6,7 +6,7 @@ import { extractChunks } from "./chunking";
 import { ResultsProvider, ResultItem } from "./ResultsProvider";
 import { findRelevantChunks } from "./retrieval";
 import { initParserForWorkspace, safeParse } from "./services/parserService";
-import { LocalCache } from "./database";
+import { LocalCache } from "./database"; 
 import { CodeChunk } from "./types";
 
 // Global singletons for extension-wide state
@@ -16,7 +16,6 @@ let resultsTreeView: vscode.TreeView<ResultItem>;
 let outputChannel: vscode.OutputChannel;
 
 export async function activate(context: vscode.ExtensionContext) {
-  // Output channel for debugging
   outputChannel = vscode.window.createOutputChannel("Kodelens-Debug");
   outputChannel.show(true);
   outputChannel.appendLine("=== Kodelens Initialization ===");
@@ -28,22 +27,20 @@ export async function activate(context: vscode.ExtensionContext) {
     return;
   }
 
-  // Initialize CodeIndexer
   codeIndexer = new CodeIndexer(workspaceRoot, context);
 
-  // Initialize ResultsProvider and TreeView
   resultsProvider = new ResultsProvider();
   resultsTreeView = vscode.window.createTreeView("kodelens-results", {
     treeDataProvider: resultsProvider,
     showCollapseAll: true,
   });
 
-  // Warm up singleton parser
+  // Initialize parser
   try {
     await initParserForWorkspace(workspaceRoot, context);
     outputChannel.appendLine("✓ Parser initialized successfully");
   } catch (err) {
-    outputChannel.appendLine(`FATAL: Parser initialization failed. Extension will not function correctly. Error: ${err}`);
+    outputChannel.appendLine(`FATAL: Parser initialization failed. Error: ${err}`);
     return;
   }
 
@@ -73,12 +70,17 @@ export async function activate(context: vscode.ExtensionContext) {
 
       const dbPath = vscode.Uri.joinPath(context.globalStorageUri, "kodelens-cache.sqlite").fsPath;
       cache = new LocalCache(dbPath);
-      await cache.init();
+      cache.init();
 
       let newChunks = 0, cachedChunks = 0;
       for (const chunk of chunks) {
-        const inserted = await cache.insertChunk(chunk, filePath, fileHash).catch(() => false);
-        inserted ? newChunks++ : cachedChunks++;
+        try {
+          const inserted = cache.insertChunk(chunk, filePath, fileHash);
+          inserted ? newChunks++ : cachedChunks++;
+        } catch (err) {
+          outputChannel.appendLine(`Insert error: ${err}`);
+          cachedChunks++;
+        }
       }
 
       const msg = `Processed ${chunks.length} chunks. ${newChunks} new, ${cachedChunks} cached.`;
@@ -112,7 +114,7 @@ export async function activate(context: vscode.ExtensionContext) {
     let cache: LocalCache | undefined;
     try {
       cache = new LocalCache(dbPath);
-      await cache.init();
+      cache.init();
 
       const relevantChunks = await findRelevantChunks(userQuestion, cache);
       outputChannel.appendLine(`Found ${relevantChunks.length} relevant chunks`);
@@ -152,7 +154,7 @@ export async function activate(context: vscode.ExtensionContext) {
       { location: vscode.ProgressLocation.Notification, title: "Kodelens: Parsing workspace Apex files...", cancellable: true },
       async (progress, token) => {
         cache = new LocalCache(dbPath);
-        await cache.init();
+        cache.init();
 
         const apexFiles = await vscode.workspace.findFiles("**/*.{cls,trigger}", "**/node_modules/**");
         outputChannel.appendLine(`Found ${apexFiles.length} Apex files`);
@@ -174,7 +176,11 @@ export async function activate(context: vscode.ExtensionContext) {
 
             const chunks = extractChunks(fileUri.fsPath, tree.rootNode);
             for (const chunk of chunks) {
-              await cache.insertChunk(chunk, fileUri.fsPath, fileHash).catch(() => false);
+              try {
+                cache.insertChunk(chunk, fileUri.fsPath, fileHash);
+              } catch (err) {
+                outputChannel.appendLine(`Insert error: ${err}`);
+              }
               totalChunks++;
             }
 
@@ -195,11 +201,6 @@ export async function activate(context: vscode.ExtensionContext) {
   // Command: Find references
   // -------------------------------
   const findReferencesDisposable = vscode.commands.registerCommand("kodelens.findReferences", async () => {
-    if (!codeIndexer) {
-      vscode.window.showErrorMessage("Code indexer not ready yet.");
-      return;
-    }
-
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
       vscode.window.showErrorMessage("No active editor!");
@@ -219,9 +220,9 @@ export async function activate(context: vscode.ExtensionContext) {
     let cache: LocalCache | undefined;
     try {
       cache = new LocalCache(dbPath);
-      await cache.init();
+      cache.init();
 
-      const results = await cache.findChunksByKeywords([symbolName]);
+      const results = cache.findChunksByKeywords([symbolName]);
       outputChannel.appendLine(`Found ${results.length} references`);
 
       if (results.length === 0) {
@@ -239,9 +240,7 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   });
 
-  // -------------------------------
   // Register all commands and output channel
-  // -------------------------------
   context.subscriptions.push(
     parseApexCommand,
     askCommand,

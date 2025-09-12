@@ -13,9 +13,10 @@ tsconfig.test.json
 
 # Ignore all node_modules EXCEPT the critical native dependency
 node_modules/**
-!node_modules/@vscode/sqlite3/package.json
-!node_modules/@vscode/sqlite3/lib/**
-!node_modules/@vscode/sqlite3/build/Release/**
+!node_modules/better-sqlite3/**
+!node_modules/bindings/**
+!node_modules/file-uri-to-path/**
+
 
 # Ignore test and development files
 test/**
