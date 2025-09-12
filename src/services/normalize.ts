@@ -51,3 +51,10 @@ export const normalizeChunk = (raw: any): CodeChunk => {
     range: toRange(raw.range),
   };
 };
+
+// src/services/normalize.ts
+export const normalizeCode = (source: string): string => {
+  // Example: remove trailing whitespace, normalize line endings
+  return source.replace(/\r\n/g, "\n").trim();
+};
+

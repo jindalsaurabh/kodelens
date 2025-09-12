@@ -1,53 +1,57 @@
+// src/CodeIndexer.ts
 import * as vscode from "vscode";
 import * as path from "path";
 import { safeParse } from "./services/parserService";
-import { normalizeChunk } from "./services/normalize";
+import { normalizeCode } from "./services/normalize";
 import { sha256Hex } from "./services/crypto";
 import { CodeChunk } from "./types";
-import { LocalCache } from "./database";
-import { extractChunks } from "./chunking"; // assuming you have this
 
+/**
+ * CodeIndexer indexes files in a workspace:
+ *  - normalizes code
+ *  - computes hashes
+ *  - parses code into AST
+ *  - prepares metadata for chunking
+ */
 export class CodeIndexer {
   private workspaceRoot: string;
   private context: vscode.ExtensionContext;
-  private db: LocalCache;
 
-  constructor(workspaceRoot: string, context: vscode.ExtensionContext, dbPath?: string) {
+  constructor(workspaceRoot: string, context: vscode.ExtensionContext) {
     this.workspaceRoot = workspaceRoot;
     this.context = context;
-    this.db = new LocalCache(dbPath || ":memory:");
-    this.db.init();
   }
 
-  /** Index a single file: parse, chunk, normalize, insert */
-  async indexFile(filePath: string, content: string): Promise<number> {
+  /**
+   * Index a single file.
+   * Returns normalized code hash and AST root node.
+   */
+  async indexFile(
+    filePath: string,
+    content: string
+  ): Promise<{ filePath: string; hash: string; ast: any } | null> {
     try {
-      // Step 1: normalize and hash
-      const fileHash = sha256Hex(content);
+      const normalized = normalizeCode(content);
+      const hash = sha256Hex(normalized);
 
-      // Step 2: parse
-      const tree = await safeParse(this.workspaceRoot, this.context, content);
-      if (!tree) {return 0;}
+      const tree = await safeParse(this.workspaceRoot, this.context, normalized);
 
-      // Step 3: extract raw chunks
-      const rawChunks = extractChunks(filePath, tree.rootNode);
+      if (!tree) {
+        console.warn(`Skipping ${filePath}, parse failed`);
+        return null;
+      }
 
-      // Step 4: normalize all chunks
-      const normalizedChunks: CodeChunk[] = rawChunks.map(normalizeChunk);
-
-      // Step 5: bulk insert into DB
-      const insertedCount = this.db.insertChunks(normalizedChunks, filePath, fileHash);
-
-      console.log(`Indexed ${filePath}: found ${rawChunks.length}, inserted ${insertedCount}`);
-      return insertedCount;
+      return {
+        filePath,
+        hash,
+        ast: tree.rootNode,
+      };
     } catch (err) {
       console.error(`Indexing failed for ${filePath}`, err);
-      return 0;
+      vscode.window.showErrorMessage(
+        `KodeLens: Indexing failed for ${path.basename(filePath)}`
+      );
+      return null;
     }
-  }
-
-  /** Optionally, close DB */
-  close(): void {
-    this.db.close();
   }
 }
