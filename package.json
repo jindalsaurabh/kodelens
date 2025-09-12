@@ -55,8 +55,8 @@
       }
     ]
   },
-"scripts": {
-  "check-types": "tsc --noEmit",
+  "scripts": {
+    "check-types": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
     "compile": "npm run check-types && npm run lint && node esbuild.js --production",
     "package": "npm run compile && npx vsce package",
@@ -64,7 +64,8 @@
     "build-apex-wasm": "cd tree-sitter-sfapex/apex && tree-sitter build --wasm && mkdir -p ../../media/apex && cp tree-sitter-apex.wasm ../../media/apex/",
     "vscode:prepublish": "npm run compile",
     "test": "jest",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "postinstall": "electron-rebuild -f -w better-sqlite3"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
@@ -93,7 +94,9 @@
     "url": "https://github.com/jindalsaurabh/kodelens.git"
   },
   "dependencies": {
-    "@vscode/sqlite3": "^5.1.8-vscode",
+    "better-sqlite3": "^12.2.0",
+    "bindings": "^1.5.0",
+    "file-uri-to-path": "^2.0.0",
     "web-tree-sitter": "^0.20.8"
   }
 }

@@ -1,138 +1,186 @@
 // src/database.ts
-import sqlite3 from '@vscode/sqlite3';
-import * as vscode from 'vscode';
+import Database from 'better-sqlite3';
 import { CodeChunk } from './types';
-import { generateHash } from './utils'; // for id/hash generation
+import { generateHash } from './utils';
 
-export class LocalCache {
-    private db: sqlite3.Database;
+export interface ILocalCache {
+  init(): void;
+  insertChunk(chunk: CodeChunk, filePath: string, fileHash: string): boolean;
+  insertChunks(chunks: CodeChunk[], filePath: string, fileHash: string): number;
+  findChunksByKeywords(keywords: string[]): CodeChunk[];
+  close(): void;
+}
 
-    constructor(dbPath: string = ':memory:') {
-        this.db = new sqlite3.Database(dbPath);
+type DbRow = {
+  id: string;
+  file_path: string;
+  file_hash: string;
+  chunk_hash: string;
+  chunk_type: string;
+  chunk_text: string;
+  start_line: number;
+  start_column: number;
+  end_line: number;
+  end_column: number;
+};
+
+export class LocalCache implements ILocalCache {
+  private db: Database.Database;
+  private readonly SCHEMA_VERSION = 1;
+
+  constructor(dbPath: string = ':memory:') {
+    this.db = new Database(dbPath);
+  }
+
+  /** Initialize DB with schema versioning */
+  init(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS metadata (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+    `);
+
+    const stmt = this.db.prepare('SELECT value FROM metadata WHERE key = ?');
+    // `get()` requires exactly 1 argument for the placeholder `?`
+    const row = stmt.get('schema_version') as { value: string } | undefined;
+    const currentVersion = row ? Number(row.value) : 0;
+  
+/*
+    const row = this.db.prepare<{ value: string }>(
+      `SELECT value FROM metadata WHERE key = 'schema_version'`
+    ).get({}); // empty object because better-sqlite3 requires an argument
+
+    const currentVersion = row ? Number(row.value) : 0;
+*/    
+
+    if (currentVersion < this.SCHEMA_VERSION) {
+      // Apply schema changes
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS code_chunks (
+          id TEXT PRIMARY KEY,
+          file_path TEXT NOT NULL,
+          file_hash TEXT NOT NULL,
+          chunk_hash TEXT NOT NULL,
+          chunk_type TEXT NOT NULL,
+          chunk_text TEXT NOT NULL,
+          start_line INTEGER NOT NULL,
+          start_column INTEGER NOT NULL,
+          end_line INTEGER NOT NULL,
+          end_column INTEGER NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_chunk_text ON code_chunks(chunk_text);
+        CREATE INDEX IF NOT EXISTS idx_file_path ON code_chunks(file_path);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_file_chunk ON code_chunks(file_path, chunk_hash);
+      `);
+
+      this.db.prepare(
+        `INSERT OR REPLACE INTO metadata (key, value) VALUES ('schema_version', @version)`
+      ).run({ version: String(this.SCHEMA_VERSION) });
     }
+  }
 
-    /** Initialize the database schema */
-    async init(): Promise<void> {
-        return new Promise((resolve, reject) => {
-            const sql = `
-            CREATE TABLE IF NOT EXISTS code_chunks (
-                        id TEXT PRIMARY KEY,          -- unique identifier (hash + filepath)
-                        file_path TEXT NOT NULL,
-                        file_hash TEXT NOT NULL,
-                        chunk_hash TEXT NOT NULL,     -- content-only hash
-                        chunk_type TEXT NOT NULL,
-                        chunk_text TEXT NOT NULL,
-                        start_line INTEGER NOT NULL,
-                        start_column INTEGER NOT NULL,
-                        end_line INTEGER NOT NULL,
-                        end_column INTEGER NOT NULL
-                    );
-
-            -- Speed up keyword searches in chunk_text
-            CREATE INDEX IF NOT EXISTS idx_chunk_text ON code_chunks(chunk_text);
-
-            -- Speed up lookups by file
-            CREATE INDEX IF NOT EXISTS idx_file_path ON code_chunks(file_path);
-
-            -- Optional: speed up duplicate detection
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_file_chunk ON code_chunks(file_path, chunk_hash);
-`;
-            this.db.exec(sql, (err) => {
-                if (err) {reject(err);}
-                else {resolve();}
-            });
-        });
-    }
-
-    /** Search database for chunks matching keywords */
-    async findChunksByKeywords(keywords: string[]): Promise<CodeChunk[]> {
-        if (keywords.length === 0) {return [];}
-
-        const likeConditions = keywords.map(k => `chunk_text LIKE '%${k}%'`).join(' OR ');
-        const sql = `SELECT * FROM code_chunks WHERE ${likeConditions} LIMIT 20`;
-        console.log('Executing SQL:', sql);
-
-        return new Promise((resolve, reject) => {
-            this.db.all(sql, [], (err, rows: any[]) => {
-                if (err) {return reject(err);}
-
-                const chunks: CodeChunk[] = rows.map(row => {
-                    const text = row.chunk_text;
-                    const normalizedCode = text; // can normalize if needed
-                    const startPosition = { row: row.start_line ?? 0, column: row.start_column ?? 0 };
-                    const endPosition = { row: row.end_line ?? 0, column: row.end_column ?? 0 };
-                    const range = new vscode.Range(startPosition.row, startPosition.column, endPosition.row, endPosition.column);
-
-                    return {
-                        id: row.id || generateHash(normalizedCode),
-                        name: row.chunk_type || 'unknown',
-                        type: row.chunk_type,
-                        code: normalizedCode,
-                        text,
-                        hash: row.chunk_hash || generateHash(normalizedCode),
-                        filePath: row.file_path || 'unknown',
-                        startLine: startPosition.row,
-                        endLine: endPosition.row,
-                        range,
-                        startPosition,
-                        endPosition
-                    } as CodeChunk;
-                });
-
-                resolve(chunks);
-            });
-        });
-    }
-
-    /** Insert a new chunk into the database */
-async insertChunk(chunk: CodeChunk, filePath: string, fileHash: string): Promise<boolean> {
-  return new Promise((resolve, reject) => {
-
-    // Ensure the chunk has a valid ID
-    const chunkId = chunk.id || generateHash(`${filePath}:${chunk.hash}`);
-
-    const sql = `
-      INSERT INTO code_chunks (
-        id, file_path, file_hash, chunk_hash, chunk_type, chunk_text,
-        start_line, start_column, end_line, end_column
-      )
+  insertChunk(chunk: CodeChunk, filePath: string, fileHash: string): boolean {
+    const stmt = this.db.prepare(`
+      INSERT OR IGNORE INTO code_chunks
+      (id, file_path, file_hash, chunk_hash, chunk_type, chunk_text, start_line, start_column, end_line, end_column)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
+    `);
 
-    this.db.run(
-      sql,
-      [
-        chunk.id,
+    const chunkId = chunk.id || generateHash(`${filePath}:${chunk.hash}`);
+    try {
+      const info = stmt.run(
+        chunkId,
         filePath,
         fileHash,
-        chunk.hash,
-        chunk.type,
-        chunk.text,
+        chunk.hash || generateHash(chunk.code || ''),
+        chunk.type || 'unknown',
+        chunk.text || '',
         Number(chunk.startPosition?.row ?? 0),
         Number(chunk.startPosition?.column ?? 0),
         Number(chunk.endPosition?.row ?? 0),
-        Number(chunk.endPosition?.column ?? 0),
-      ],
-      function (err) {
-        if (err) {
-            //Handle duplicate gracefully    
-            if (err.message.includes("UNIQUE constraint failed")) {
-            resolve(false);
-          } else {
-            console.error("Insert error:", err);
-            reject(err);
-          }
-        } else {
-          resolve(true);
-        }
-      }
-    );
-  });
-}
-
-
-    /** Close DB connection */
-    close(): void {
-        this.db.close();
+        Number(chunk.endPosition?.column ?? 0)
+      );
+      return info.changes > 0;
+    } catch (err) {
+      console.error('❌ Insert error:', err, 'Chunk:', chunk);
+      return false;
     }
+  }
+
+  insertChunks(chunks: CodeChunk[], filePath: string, fileHash: string): number {
+    const stmt = this.db.prepare(`
+      INSERT OR IGNORE INTO code_chunks
+      (id, file_path, file_hash, chunk_hash, chunk_type, chunk_text, start_line, start_column, end_line, end_column)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const insertMany = this.db.transaction((chunks: CodeChunk[]) => {
+      let count = 0;
+      for (const chunk of chunks) {
+        const chunkId = chunk.id || generateHash(`${filePath}:${chunk.hash}`);
+        const info = stmt.run(
+          chunkId,
+          filePath,
+          fileHash,
+          chunk.hash || generateHash(chunk.code || ''),
+          chunk.type || 'unknown',
+          chunk.text || '',
+          Number(chunk.startPosition?.row ?? 0),
+          Number(chunk.startPosition?.column ?? 0),
+          Number(chunk.endPosition?.row ?? 0),
+          Number(chunk.endPosition?.column ?? 0)
+        );
+        if (info.changes > 0) {count++;}
+      }
+      return count;
+    });
+
+    try {
+      return insertMany(chunks);
+    } catch (err) {
+      console.error('❌ Bulk insert error:', err);
+      return 0;
+    }
+  }
+
+  findChunksByKeywords(keywords: string[]): CodeChunk[] {
+    if (keywords.length === 0) {return [];}
+
+    const conditions = keywords.map(() => `chunk_text LIKE '%' || ? || '%'`).join(' OR ');
+    const sql = `SELECT * FROM code_chunks WHERE ${conditions} LIMIT 20`;
+    const stmt = this.db.prepare(sql);
+
+    try {
+      const rows = stmt.all(...keywords) as DbRow[];
+      return rows.map((row) => {
+        const startPosition = { row: row.start_line, column: row.start_column };
+        const endPosition = { row: row.end_line, column: row.end_column };
+        const range = { start: startPosition, end: endPosition };
+
+        return {
+          id: row.id,
+          hash: row.chunk_hash,
+          filePath: row.file_path,
+          type: row.chunk_type,
+          name: row.chunk_type,
+          code: row.chunk_text,
+          text: row.chunk_text,
+          startLine: row.start_line,
+          endLine: row.end_line,
+          startPosition,
+          endPosition,
+          range
+        } as CodeChunk;
+      });
+    } catch (err) {
+      console.error('❌ Search error:', err);
+      return [];
+    }
+  }
+
+  close(): void {
+    this.db.close();
+  }
 }
