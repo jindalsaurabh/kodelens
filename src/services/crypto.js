@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.sha256Hex = sha256Hex;
-var crypto_1 = require("crypto");
+const crypto_1 = require("crypto");
 /**
  * Deterministic SHA-256 hash of a string.
  */

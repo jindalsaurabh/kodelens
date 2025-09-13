@@ -54,4 +54,35 @@ export class CodeIndexer {
       return null;
     }
   }
+
+  /**
+   * Extract semantic chunks from an AST.
+   * Default implementation: single chunk (whole file).
+   * Subclasses can override for finer-grained chunking.
+   */
+  protected extractChunks(
+    filePath: string,
+    ast: any,
+    content: string
+  ): CodeChunk[] {
+    return [
+      {
+        id: sha256Hex(filePath + content),
+        filePath,
+        text: content,
+        code: content,
+        name: "root",
+        type: "file",
+        hash: sha256Hex(content),
+        startLine: 1,
+        endLine: content.split("\n").length,
+        startPosition: { row: 1, column: 0 },
+        endPosition: { row: content.split("\n").length, column: 0 },
+        range: {
+          start: { row: 1, column: 0 },
+          end: { row: content.split("\n").length, column: 0 },
+        },
+      },
+    ];
+  }
 }

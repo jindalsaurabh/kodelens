@@ -8,6 +8,9 @@ import { findRelevantChunks } from "./retrieval";
 import { initParserForWorkspace, safeParse } from "./services/parserService";
 import { LocalCache, ILocalCache } from "./database";
 import { CodeChunk } from "./types";
+import { SemanticCodeIndexer } from "./SemanticCodeIndexer";
+import { createEmbeddingService } from "./services/embeddingFactory";
+
 
 let codeIndexer: CodeIndexer;
 let resultsProvider: ResultsProvider;
@@ -24,7 +27,37 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.window.showWarningMessage("Open a folder/workspace for Kodelens to function.");
     return;
   }
+  // Read user settings
+  const config = vscode.workspace.getConfiguration("kodelens");
+  const embeddingModel = config.get<string>("embeddingModel") || "mock";
+  const openAiApiKey = config.get<string>("openAiApiKey");
+  const googleApiKey = config.get<string>("googleApiKey");
+  let apiKey: string | undefined;
+  if (embeddingModel === "openai") {
+    apiKey = openAiApiKey;
+  } else if (embeddingModel === "google") {
+    apiKey = googleApiKey;
+  }
+    // Create DB/cache
+  const cache = new LocalCache(workspaceRoot);
 
+  const embeddingService = createEmbeddingService(embeddingModel, apiKey);
+  // Create semantic indexer
+  const indexer = new SemanticCodeIndexer(
+    workspaceRoot,
+    context,
+    cache,
+    embeddingModel,
+    embeddingModel === "openai" ? openAiApiKey : googleApiKey
+  );
+
+  
+  
+
+  // Example: index all files when extension activates
+  // (Later we can hook this to commands/events)
+  vscode.window.showInformationMessage(`KodeLens using ${embeddingModel} embeddings`);
+  
   codeIndexer = new CodeIndexer(workspaceRoot, context);
 
   resultsProvider = new ResultsProvider();

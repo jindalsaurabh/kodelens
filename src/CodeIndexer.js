@@ -32,50 +32,14 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
-var __generator = (this && this.__generator) || function (thisArg, body) {
-    var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g = Object.create((typeof Iterator === "function" ? Iterator : Object).prototype);
-    return g.next = verb(0), g["throw"] = verb(1), g["return"] = verb(2), typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
-    function verb(n) { return function (v) { return step([n, v]); }; }
-    function step(op) {
-        if (f) throw new TypeError("Generator is already executing.");
-        while (g && (g = 0, op[0] && (_ = 0)), _) try {
-            if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
-            if (y = 0, t) op = [op[0] & 2, t.value];
-            switch (op[0]) {
-                case 0: case 1: t = op; break;
-                case 4: _.label++; return { value: op[1], done: false };
-                case 5: _.label++; y = op[1]; op = [0]; continue;
-                case 7: op = _.ops.pop(); _.trys.pop(); continue;
-                default:
-                    if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) { _ = 0; continue; }
-                    if (op[0] === 3 && (!t || (op[1] > t[0] && op[1] < t[3]))) { _.label = op[1]; break; }
-                    if (op[0] === 6 && _.label < t[1]) { _.label = t[1]; t = op; break; }
-                    if (t && _.label < t[2]) { _.label = t[2]; _.ops.push(op); break; }
-                    if (t[2]) _.ops.pop();
-                    _.trys.pop(); continue;
-            }
-            op = body.call(thisArg, _);
-        } catch (e) { op = [6, e]; y = 0; } finally { f = t = 0; }
-        if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
-    }
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CodeIndexer = void 0;
 // src/CodeIndexer.ts
-var vscode = __importStar(require("vscode"));
-var path = __importStar(require("path"));
-var parserService_1 = require("./services/parserService");
-var normalize_1 = require("./services/normalize");
-var crypto_1 = require("./services/crypto");
+const vscode = __importStar(require("vscode"));
+const path = __importStar(require("path"));
+const parserService_1 = require("./services/parserService");
+const normalize_1 = require("./services/normalize");
+const crypto_1 = require("./services/crypto");
 /**
  * CodeIndexer indexes files in a workspace:
  *  - normalizes code
@@ -83,8 +47,8 @@ var crypto_1 = require("./services/crypto");
  *  - parses code into AST
  *  - prepares metadata for chunking
  */
-var CodeIndexer = /** @class */ (function () {
-    function CodeIndexer(workspaceRoot, context) {
+class CodeIndexer {
+    constructor(workspaceRoot, context) {
         this.workspaceRoot = workspaceRoot;
         this.context = context;
     }
@@ -92,37 +56,52 @@ var CodeIndexer = /** @class */ (function () {
      * Index a single file.
      * Returns normalized code hash and AST root node.
      */
-    CodeIndexer.prototype.indexFile = function (filePath, content) {
-        return __awaiter(this, void 0, void 0, function () {
-            var normalized, hash, tree, err_1;
-            return __generator(this, function (_a) {
-                switch (_a.label) {
-                    case 0:
-                        _a.trys.push([0, 2, , 3]);
-                        normalized = (0, normalize_1.normalizeCode)(content);
-                        hash = (0, crypto_1.sha256Hex)(normalized);
-                        return [4 /*yield*/, (0, parserService_1.safeParse)(this.workspaceRoot, this.context, normalized)];
-                    case 1:
-                        tree = _a.sent();
-                        if (!tree) {
-                            console.warn("Skipping ".concat(filePath, ", parse failed"));
-                            return [2 /*return*/, null];
-                        }
-                        return [2 /*return*/, {
-                                filePath: filePath,
-                                hash: hash,
-                                ast: tree.rootNode,
-                            }];
-                    case 2:
-                        err_1 = _a.sent();
-                        console.error("Indexing failed for ".concat(filePath), err_1);
-                        vscode.window.showErrorMessage("KodeLens: Indexing failed for ".concat(path.basename(filePath)));
-                        return [2 /*return*/, null];
-                    case 3: return [2 /*return*/];
-                }
-            });
-        });
-    };
-    return CodeIndexer;
-}());
+    async indexFile(filePath, content) {
+        try {
+            const normalized = (0, normalize_1.normalizeCode)(content);
+            const hash = (0, crypto_1.sha256Hex)(normalized);
+            const tree = await (0, parserService_1.safeParse)(this.workspaceRoot, this.context, normalized);
+            if (!tree) {
+                console.warn(`Skipping ${filePath}, parse failed`);
+                return null;
+            }
+            return {
+                filePath,
+                hash,
+                ast: tree.rootNode,
+            };
+        }
+        catch (err) {
+            console.error(`Indexing failed for ${filePath}`, err);
+            vscode.window.showErrorMessage(`KodeLens: Indexing failed for ${path.basename(filePath)}`);
+            return null;
+        }
+    }
+    /**
+     * Extract semantic chunks from an AST.
+     * Default implementation: single chunk (whole file).
+     * Subclasses can override for finer-grained chunking.
+     */
+    extractChunks(filePath, ast, content) {
+        return [
+            {
+                id: (0, crypto_1.sha256Hex)(filePath + content),
+                filePath,
+                text: content,
+                code: content,
+                name: "root",
+                type: "file",
+                hash: (0, crypto_1.sha256Hex)(content),
+                startLine: 1,
+                endLine: content.split("\n").length,
+                startPosition: { row: 1, column: 0 },
+                endPosition: { row: content.split("\n").length, column: 0 },
+                range: {
+                    start: { row: 1, column: 0 },
+                    end: { row: content.split("\n").length, column: 0 },
+                },
+            },
+        ];
+    }
+}
 exports.CodeIndexer = CodeIndexer;
