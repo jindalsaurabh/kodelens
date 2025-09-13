@@ -1,13 +1,16 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 // testSemantic.ts
+require("dotenv/config"); // load .env
 const database_1 = require("./src/database");
-const embeddings_1 = require("./src/services/embeddings");
+const GoogleGeminiEmbeddingService_1 = require("./src/services/GoogleGeminiEmbeddingService");
+const OpenAIEmbeddingService_1 = require("./src/services/OpenAIEmbeddingService");
 const SemanticRetrievalService_1 = require("./src/SemanticRetrievalService");
+/**
+ * Simple cosine similarity helper
+ */
 function cosineSimilarity(a, b) {
-    let dot = 0;
-    let na = 0;
-    let nb = 0;
+    let dot = 0, na = 0, nb = 0;
     const len = Math.min(a.length, b.length);
     for (let i = 0; i < len; i++) {
         dot += a[i] * b[i];
@@ -18,78 +21,57 @@ function cosineSimilarity(a, b) {
     nb = Math.sqrt(nb) || 1;
     return dot / (na * nb);
 }
+/**
+ * Create the embedding service based on ENV or config
+ * - DEV: use Gemini
+ * - PROD: use OpenAI
+ */
+function createEmbeddingService() {
+    const provider = process.env.EMBEDDING_PROVIDER || "gemini"; // "gemini" or "openai"
+    if (provider === "openai") {
+        const apiKey = process.env.OPENAI_API_KEY;
+        if (!apiKey) {
+            throw new Error("OPENAI_API_KEY is required for OpenAI embeddings");
+        }
+        return new OpenAIEmbeddingService_1.OpenAIEmbeddingService(apiKey, "text-embedding-3-small");
+    }
+    else {
+        // Default: Gemini
+        return new GoogleGeminiEmbeddingService_1.GoogleGeminiEmbeddingService("gemini-embedding-001", 3072);
+    }
+}
 async function main() {
-    console.log("🔹 Starting semantic search test (mock embeddings)...");
-    // 1) Init DB/cache
-    const cache = new database_1.LocalCache(); // defaults to :memory:
+    console.log("🔹 Starting semantic search test...");
+    // 1) Init cache
+    const cache = new database_1.LocalCache();
     cache.init();
     console.log("✅ LocalCache initialized");
-    // 2) Embedding service (mock for offline testing)
-    const embedder = new embeddings_1.MockEmbeddingService(); // deterministic for repeatable tests
-    console.log("✅ MockEmbeddingService initialized (dim=" + embedder.dim() + ")");
-    // 3) Semantic retriever (uses embedder + cache)
+    // 2) Embedding service
+    const embedder = createEmbeddingService();
+    console.log(`✅ ${embedder.constructor.name} initialized (dim=${embedder.dim()})`);
+    // 3) Semantic retriever
     const retriever = new SemanticRetrievalService_1.SemanticRetrievalService(embedder, cache, 3);
     console.log("✅ SemanticRetrievalService ready");
-    // 4) Prepare fully-populated CodeChunk objects (match your types)
+    // 4) Sample code chunks
     const chunks = [
-        {
-            id: "1",
-            filePath: "FileA.cls",
-            text: "function add(x, y) { return x + y; }",
-            hash: "hash1",
-            type: "function",
-            name: "add",
-            code: "function add(x, y) { return x + y; }",
-            startLine: 1,
-            endLine: 1,
-            startPosition: { row: 1, column: 0 },
-            endPosition: { row: 1, column: 30 },
-            range: { start: { row: 1, column: 0 }, end: { row: 1, column: 30 } }
-        },
-        {
-            id: "2",
-            filePath: "FileB.cls",
-            text: "function subtract(x, y) { return x - y; }",
-            hash: "hash2",
-            type: "function",
-            name: "subtract",
-            code: "function subtract(x, y) { return x - y; }",
-            startLine: 1,
-            endLine: 1,
-            startPosition: { row: 1, column: 0 },
-            endPosition: { row: 1, column: 35 },
-            range: { start: { row: 1, column: 0 }, end: { row: 1, column: 35 } }
-        },
-        {
-            id: "3",
-            filePath: "FileC.cls",
-            text: "function multiply(x, y) { return x * y; }",
-            hash: "hash3",
-            type: "function",
-            name: "multiply",
-            code: "function multiply(x, y) { return x * y; }",
-            startLine: 1,
-            endLine: 1,
-            startPosition: { row: 1, column: 0 },
-            endPosition: { row: 1, column: 35 },
-            range: { start: { row: 1, column: 0 }, end: { row: 1, column: 35 } }
-        }
+        { id: "1", filePath: "FileA.cls", text: "function add(x, y) { return x + y; }", hash: "hash1", type: "function", name: "add", code: "function add(x, y) { return x + y; }", startLine: 1, endLine: 1, startPosition: { row: 1, column: 0 }, endPosition: { row: 1, column: 30 }, range: { start: { row: 1, column: 0 }, end: { row: 1, column: 30 } } },
+        { id: "2", filePath: "FileB.cls", text: "function subtract(x, y) { return x - y; }", hash: "hash2", type: "function", name: "subtract", code: "function subtract(x, y) { return x - y; }", startLine: 1, endLine: 1, startPosition: { row: 1, column: 0 }, endPosition: { row: 1, column: 35 }, range: { start: { row: 1, column: 0 }, end: { row: 1, column: 35 } } },
+        { id: "3", filePath: "FileC.cls", text: "function multiply(x, y) { return x * y; }", hash: "hash3", type: "function", name: "multiply", code: "function multiply(x, y) { return x * y; }", startLine: 1, endLine: 1, startPosition: { row: 1, column: 0 }, endPosition: { row: 1, column: 35 }, range: { start: { row: 1, column: 0 }, end: { row: 1, column: 35 } } },
     ];
     console.log(`✅ Prepared ${chunks.length} test code chunks`);
-    // 5) Generate embeddings for chunks
+    // 5) Generate embeddings
     const embeddings = await embedder.generateEmbeddings(chunks.map(c => c.text));
-    console.log("✅ Generated embeddings for all chunks (mock)");
-    // 6) Insert chunks + embeddings into LocalCache
-    const insertedCount = cache.insertChunksWithEmbeddings(chunks, "testFile", "hash123", embeddings);
-    console.log(`✅ Inserted ${insertedCount} chunks with embeddings into LocalCache`);
-    // 7) Run semantic query via SemanticRetrievalService
+    console.log(`✅ Generated embeddings for all chunks`);
+    // 6) Insert into cache
+    cache.insertChunksWithEmbeddings(chunks, "testFile", "hash123", embeddings);
+    console.log(`✅ Inserted ${chunks.length} chunks with embeddings into LocalCache`);
+    // 7) Query example
     const query = "How do I add two numbers?";
     console.log(`🔹 Running semantic search for query: "${query}"`);
-    // Query embedding (for debug)
     const queryEmbedding = await embedder.generateEmbedding(query);
     console.log("Query embedding (first 6 values):", Array.from(queryEmbedding.slice(0, 6)));
-    // Debug: compute similarity for all stored embeddings (via cache.getAllEmbeddings)
-    const allEmbRows = cache.getAllEmbeddings(); // returns {id, embedding: Float32Array}[]
+    // Compute similarity
+    const allEmbRows = cache.getAllEmbeddings();
     const scores = allEmbRows.map(e => {
         const chunk = cache.getChunkById(e.id);
         return {
@@ -100,19 +82,34 @@ async function main() {
         };
     }).sort((a, b) => b.score - a.score);
     console.log("🔍 Cosine similarity (all chunks):");
-    scores.forEach(s => {
-        console.log(` - [id=${s.id}] ${s.name} (${s.filePath}) -> ${s.score.toFixed(4)}`);
-    });
-    // 8) Use the service to get top-K results (this will use same embeddings + ranking)
+    scores.forEach(s => console.log(` - [id=${s.id}] ${s.name} (${s.filePath}) -> ${s.score.toFixed(4)}`));
+    // 8) Top-K retrieval
     const results = await retriever.findRelevantChunks(query);
     console.log("🔹 Semantic retrieval service results (top K):");
     results.forEach((r, idx) => {
         console.log(`${idx + 1}. ${r.name} (id=${r.id}, file=${r.filePath})`);
         console.log(`   code: ${r.code}`);
     });
-    // done
     console.log("✅ Test complete");
 }
+async function compareProviders(query, chunks) {
+    console.log("🔹 Comparing Gemini vs OpenAI embeddings...");
+    // 1) Gemini embeddings
+    const gemini = new GoogleGeminiEmbeddingService_1.GoogleGeminiEmbeddingService("gemini-embedding-001", 3072);
+    const geminiEmb = await gemini.generateEmbedding(query);
+    // 2) OpenAI embeddings
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+    const openai = new OpenAIEmbeddingService_1.OpenAIEmbeddingService(openaiApiKey, "text-embedding-3-small");
+    const openaiEmb = await openai.generateEmbedding(query);
+    // Compare cosine similarity with first chunk
+    const chunkEmb = await gemini.generateEmbedding(chunks[0].text); // using Gemini for reference
+    console.log("Chunk:", chunks[0].text);
+    console.log("Cosine similarity (Gemini -> chunk1):", cosineSimilarity(geminiEmb, chunkEmb).toFixed(4));
+    console.log("Cosine similarity (OpenAI -> chunk1):", cosineSimilarity(openaiEmb, chunkEmb).toFixed(4));
+    console.log("✅ Comparison done");
+}
+// Call in main() after preparing chunks
+// await compareProviders(query, chunks);
 main().catch(err => {
     console.error("❌ testSemantic failed:", err);
     process.exit(1);
