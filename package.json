@@ -96,7 +96,11 @@
   "dependencies": {
     "better-sqlite3": "^12.2.0",
     "bindings": "^1.5.0",
+    "dotenv": "^17.2.2",
     "file-uri-to-path": "^2.0.0",
+    "google-auth-library": "^10.3.0",
+    "node-fetch": "^3.3.2",
+    "openai": "^5.20.2",
     "web-tree-sitter": "^0.20.8"
   }
 }

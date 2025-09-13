@@ -24,16 +24,27 @@ export class SemanticRetrievalService {
   async findRelevantChunks(query: string): Promise<CodeChunk[]> {
     // 1. Generate embedding for query
     const queryEmbedding = await this.embeddingService.generateEmbedding(query);
-
+    console.log("Query embedding (first 5 values):", queryEmbedding.slice(0,5));
+    
     // 2. Fetch all chunks with embeddings
     const allEmbeddings = this.cache.getAllEmbeddings();
     if (allEmbeddings.length === 0) {return [];}
 
+    console.log("Query embedding (first 5 values):", queryEmbedding.slice(0,5));
+  
     // 3. Compute cosine similarity
+  const scored: { id: string; score: number }[] = allEmbeddings.map(c => {
+  const score = this.cosineSimilarity(queryEmbedding, c.embedding);
+  console.log(`Similarity with chunk ${c.id}: ${score.toFixed(4)}`);
+  return { id: c.id, score };
+  });
+
+  /*
     const scored: { id: string; score: number }[] = allEmbeddings.map(c => ({
       id: c.id,
       score: this.cosineSimilarity(queryEmbedding, c.embedding)
     }));
+    */
 
     // Inside findRelevantChunks before sorting
     console.log("🔍 Similarity scores:");
@@ -44,9 +55,10 @@ export class SemanticRetrievalService {
 
     // 4. Sort by descending similarity
     scored.sort((a, b) => b.score - a.score);
-
+    
     // 5. Pick top K
     const topIds = scored.slice(0, this.topK).map(s => s.id);
+    console.log("Top K chunks by similarity:", topIds);
 
     // 6. Retrieve CodeChunk objects
     const topChunks: CodeChunk[] = topIds

@@ -1,9 +1,11 @@
 // src/services/embeddings.ts
 import crypto from 'crypto';
-
 export interface EmbeddingService {
+  /** Returns the dimensionality of the embedding vectors */
   dim(): number;
+  /** Generate a single embedding */
   generateEmbedding(text: string): Promise<Float32Array>;
+  /** Generate embeddings for multiple inputs */
   generateEmbeddings(texts: string[]): Promise<Float32Array[]>;
 }
 
@@ -45,4 +47,6 @@ export class MockEmbeddingService implements EmbeddingService {
     for (let i = 0; i < arr.length; i++) {arr[i] /= norm;}
     return arr;
   }
+
+  
 }

@@ -88,3 +88,6 @@ next-env.d.ts
 
 #test files
 test/snapshots/sampleFiles/*
+
+#js files
+*.js

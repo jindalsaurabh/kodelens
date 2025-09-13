@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.normalizeCode = exports.normalizeChunk = void 0;
-var toStr = function (v) {
+const toStr = (v) => {
     if (typeof v === "string") {
         return v;
     }
@@ -10,7 +10,7 @@ var toStr = function (v) {
     }
     return String(v);
 };
-var toInt = function (v) {
+const toInt = (v) => {
     if (typeof v === "number" && !isNaN(v)) {
         return v;
     }
@@ -19,13 +19,13 @@ var toInt = function (v) {
     }
     return 0;
 };
-var toPoint = function (v) {
+const toPoint = (v) => {
     if (v && typeof v.row === "number" && typeof v.column === "number") {
         return { row: v.row, column: v.column };
     }
     return { row: 0, column: 0 };
 };
-var toRange = function (v) {
+const toRange = (v) => {
     if (v && v.start && v.end) {
         return {
             start: toPoint(v.start),
@@ -37,7 +37,7 @@ var toRange = function (v) {
         end: { row: 0, column: 0 },
     };
 };
-var normalizeChunk = function (raw) {
+const normalizeChunk = (raw) => {
     return {
         id: toStr(raw.id),
         hash: toStr(raw.hash),
@@ -55,7 +55,7 @@ var normalizeChunk = function (raw) {
 };
 exports.normalizeChunk = normalizeChunk;
 // src/services/normalize.ts
-var normalizeCode = function (source) {
+const normalizeCode = (source) => {
     // Example: remove trailing whitespace, normalize line endings
     return source.replace(/\r\n/g, "\n").trim();
 };
