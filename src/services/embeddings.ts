@@ -47,6 +47,5 @@ export class MockEmbeddingService implements EmbeddingService {
     for (let i = 0; i < arr.length; i++) {arr[i] /= norm;}
     return arr;
   }
-
-  
+ 
 }

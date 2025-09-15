@@ -1,4 +1,4 @@
-// src/services/embeddingFactory.ts
+//src/services/embeddingFactory.ts
 import { EmbeddingService, MockEmbeddingService } from "./embeddings";
 import { OpenAIEmbeddingService } from "./OpenAIEmbeddingService";
 import { GoogleGeminiEmbeddingService } from "./GoogleGeminiEmbeddingService";

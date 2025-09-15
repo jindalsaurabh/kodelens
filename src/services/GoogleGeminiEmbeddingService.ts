@@ -44,11 +44,11 @@ export class GoogleGeminiEmbeddingService implements EmbeddingService {
     if (this.useApiKey) {
       return process.env.GOOGLE_API_KEY as string;
     }
-    if (!this.auth) throw new Error("GoogleAuth not initialized");
+    if (!this.auth) {throw new Error("GoogleAuth not initialized");}
     const client = await this.auth.getClient();
     const access = await client.getAccessToken();
     const token = (access && (access as any).token) || access;
-    if (!token) throw new Error("Failed to obtain access token from GoogleAuth");
+    if (!token) {throw new Error("Failed to obtain access token from GoogleAuth");}
     return token as string;
   }
 
