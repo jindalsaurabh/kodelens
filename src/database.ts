@@ -1,3 +1,4 @@
+//src/database.ts
 import Database from 'better-sqlite3';
 import { CodeChunk } from './types';
 import { generateHash } from './utils';
@@ -183,6 +184,121 @@ export class LocalCache implements ILocalCache {
       return 0;
     }
   }
+
+/**
+ * Insert a chunk if new, or update if it exists.Ensures changed chunks are updated, not duplicated.  
+ * Optionally store embedding if provided.
+ */
+public insertOrUpdateChunk(chunk: CodeChunk, fileHash: string, embedding?: Float32Array): boolean {
+  const chunkId = chunk.id || generateHash(`${chunk.filePath}:${chunk.hash}`);
+  const chunkHash = chunk.hash || generateHash(chunk.code || '');
+
+  const stmt = this.db.prepare(`
+    INSERT INTO code_chunks
+      (id, file_path, file_hash, chunk_hash, chunk_type, chunk_text,
+       start_line, start_column, end_line, end_column, embedding)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      file_hash = excluded.file_hash,
+      chunk_hash = excluded.chunk_hash,
+      chunk_type = excluded.chunk_type,
+      chunk_text = excluded.chunk_text,
+      start_line = excluded.start_line,
+      start_column = excluded.start_column,
+      end_line = excluded.end_line,
+      end_column = excluded.end_column,
+      embedding = excluded.embedding
+  `);
+
+  try {
+    const info = stmt.run(
+      chunkId,
+      chunk.filePath,
+      fileHash, // fallback if fileHash not set
+      chunkHash,
+      chunk.type || 'unknown',
+      chunk.code || chunk.text || '',
+      Number(chunk.startPosition?.row ?? 0),
+      Number(chunk.startPosition?.column ?? 0),
+      Number(chunk.endPosition?.row ?? 0),
+      Number(chunk.endPosition?.column ?? 0),
+      embedding ? Buffer.from(embedding.buffer) : null
+    );
+
+    return info.changes > 0;
+  } catch (err) {
+    console.error('❌ insertOrUpdateChunk error:', err, 'Chunk:', chunk);
+    return false;
+  }
+}
+
+
+/*
+insertOrUpdateChunk(chunk: CodeChunk, filePath: string, fileHash: string, embedding?: Float32Array | null): boolean {
+  const stmt = this.db.prepare(`
+    INSERT INTO code_chunks (
+      id, file_path, file_hash, chunk_hash, chunk_type,
+      chunk_text, start_line, start_column, end_line, end_column, embedding
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      file_path   = excluded.file_path,
+      file_hash   = excluded.file_hash,
+      chunk_hash  = excluded.chunk_hash,
+      chunk_type  = excluded.chunk_type,
+      chunk_text  = excluded.chunk_text,
+      start_line  = excluded.start_line,
+      start_column= excluded.start_column,
+      end_line    = excluded.end_line,
+      end_column  = excluded.end_column,
+      embedding   = excluded.embedding
+  `);
+
+  const chunkId = chunk.id || generateHash(`${filePath}:${chunk.hash}`);
+  try {
+    const info = stmt.run(
+      chunkId,
+      filePath,
+      fileHash,
+      chunk.hash || generateHash(chunk.code || ''),
+      chunk.type || 'unknown',
+      chunk.text || '',
+      Number(chunk.startPosition?.row ?? 0),
+      Number(chunk.startPosition?.column ?? 0),
+      Number(chunk.endPosition?.row ?? 0),
+      Number(chunk.endPosition?.column ?? 0),
+      embedding ? Buffer.from(embedding.buffer) : null
+    );
+    return info.changes > 0;
+  } catch (err) {
+    console.error('❌ Upsert error:', err, 'Chunk:', chunk);
+    return false;
+  }
+}
+*/
+
+async deleteChunksForFile(filePath: string, validChunkHashes: string[]): Promise<void> {
+  const placeholders = validChunkHashes.map(() => "?").join(",") || "''";
+  const sql = `
+    DELETE FROM code_chunks 
+    WHERE file_path = ? 
+    AND chunk_hash NOT IN (${placeholders})
+  `;
+  const params = [filePath, ...validChunkHashes];
+  this.db.prepare(sql).run(...params);
+
+}
+
+
+
+  //getChunkByHash → lets you detect unchanged chunks quickly.
+  public getChunkByHash(chunkHash: string): CodeChunk | null {
+  const row = this.db
+    .prepare(`SELECT * FROM code_chunks WHERE chunk_hash = ? LIMIT 1`)
+    .get(chunkHash) as DbRow | undefined;
+  return row ? this.mapRowToChunk(row) : null;
+}
+
 
   getEmbeddingsByIds(ids: string[]): { id: string; embedding: Float32Array }[] {
     if (ids.length === 0) {return [];}

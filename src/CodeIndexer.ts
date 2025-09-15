@@ -1,51 +1,150 @@
 // src/CodeIndexer.ts
 import * as vscode from "vscode";
 import * as path from "path";
-import { safeParse } from "./services/parserService";
-import { normalizeCode } from "./services/normalize";
-import { sha256Hex } from "./services/crypto";
 import { CodeChunk } from "./types";
+import { generateHash, computeChunkHash } from "./utils";
+import { ApexChunkExtractor } from "./extractors/ApexChunkExtractor";
+import { ApexAdapter } from "./adapters/ApexAdapter";
+import { LocalCache } from "./database";
+import { UnifiedEmbeddingService } from "./services/UnifiedEmbeddingService";
 
 /**
  * CodeIndexer indexes files in a workspace:
  *  - normalizes code
- *  - computes hashes
  *  - parses code into AST
  *  - prepares metadata for chunking
+ *  - handles delta/upsert and garbage collection
  */
 export class CodeIndexer {
-  private workspaceRoot: string;
-  private context: vscode.ExtensionContext;
+  private extractor: ApexChunkExtractor;
 
-  constructor(workspaceRoot: string, context: vscode.ExtensionContext) {
-    this.workspaceRoot = workspaceRoot;
-    this.context = context;
+  constructor(
+    private workspaceRoot: string,
+    private context: vscode.ExtensionContext,
+    private db: LocalCache,
+    private apexAdapter: ApexAdapter,
+    private embeddingService?: UnifiedEmbeddingService
+  ) {
+    this.extractor = new ApexChunkExtractor(this.apexAdapter);
+  }
+
+  /**
+   * Index multiple chunks with delta and embedding support
+   */
+  async indexChunks(
+    chunks: CodeChunk[],
+    filePath: string,
+    fileHash: string
+  ): Promise<void> {
+    // collect only new/changed chunks
+    const toIndex: CodeChunk[] = [];
+    
+
+    for (const chunk of chunks) {
+      const chunkHash =
+        chunk.hash ?? computeChunkHash(filePath, chunk.code ?? chunk.text ?? "", chunk.type);
+      chunk.hash = chunkHash;
+
+      const existing = this.db.getChunkByHash ? this.db.getChunkByHash(chunkHash) : null;
+      if (existing) {continue;}
+
+      toIndex.push(chunk);
+    }
+
+    if (toIndex.length === 0) {return;}
+
+    const BATCH_SIZE = this.embeddingService?.batchSize ?? 32;
+
+    if (!this.embeddingService) {
+      for (const c of toIndex) {
+        this.db.insertOrUpdateChunk(c, fileHash, undefined);
+      }
+      console.info(`KodeLens: indexed ${toIndex.length} chunk(s) from ${filePath}`);
+      return;
+    }
+
+    for (let i = 0; i < toIndex.length; i += BATCH_SIZE) {
+      const batch = toIndex.slice(i, i + BATCH_SIZE);
+      const texts = batch.map((c) => c.code ?? c.text ?? "");
+
+      let embeddings: Float32Array[] | null = null;
+
+      if (this.embeddingService) {
+  try {
+    embeddings = this.embeddingService.generateEmbeddings
+      ? await this.embeddingService.generateEmbeddings(texts)
+      : await Promise.all(
+          texts.map(async (t) => {
+            try {
+              return await this.embeddingService!.generateEmbedding(t);
+            } catch (err) {
+              console.error("KodeLens: per-chunk embedding failed", err, t);
+              return new Float32Array(this.embeddingService!.dim());
+            }
+          })
+        );
+  } catch (err) {
+        console.error("KodeLens: batch embedding failed", err);
+        embeddings = null;
+      }}
+
+      if (embeddings && embeddings.length === batch.length) {
+        try {
+          if (typeof this.db.insertChunksWithEmbeddings === "function") {
+            this.db.insertChunksWithEmbeddings(batch, filePath, fileHash, embeddings);
+          } else {
+            // fallback per-chunk
+            for (let k = 0; k < batch.length; k++) {
+              this.db.insertOrUpdateChunk(batch[k], fileHash, embeddings[k]);
+            }
+          }
+        } catch (err) {
+          console.error("KodeLens: insertChunksWithEmbeddings failed", err);
+          for (let k = 0; k < batch.length; k++) {
+            try {
+              this.db.insertOrUpdateChunk(batch[k], fileHash, embeddings[k]);
+            } catch (err2) {
+              console.error("KodeLens: per-chunk upsert failed", err2, "chunk:", batch[k]);
+            }
+          }
+        }
+      } else {
+        // embeddings unavailable; insert metadata only
+        for (const c of batch) {
+          try {
+            this.db.insertOrUpdateChunk(c, fileHash, undefined);
+          } catch (err) {
+            console.error("KodeLens: insertOrUpdateChunk (no-embedding) failed:", err, "chunk:", c);
+          }
+        }
+      }
+    }
+
+    console.info(`KodeLens: indexed ${toIndex.length} chunk(s) from ${filePath}`);
   }
 
   /**
    * Index a single file.
-   * Returns normalized code hash and AST root node.
    */
   async indexFile(
     filePath: string,
     content: string
-  ): Promise<{ filePath: string; hash: string; ast: any } | null> {
+  ): Promise<{ filePath: string; fileHash: string } | null> {
     try {
-      const normalized = normalizeCode(content);
-      const hash = sha256Hex(normalized);
+      const normalized = content; // replace with normalizeCode(content) if needed
+      const fileHash = generateHash(normalized);
 
-      const tree = await safeParse(this.workspaceRoot, this.context, normalized);
+      const chunks = this.extractor.extractChunks(filePath, normalized);
 
-      if (!tree) {
-        console.warn(`Skipping ${filePath}, parse failed`);
-        return null;
-      }
+      const validHashes = chunks.map((c) =>
+        computeChunkHash(filePath, c.code ?? c.text ?? "", c.type)
+      );
 
-      return {
-        filePath,
-        hash,
-        ast: tree.rootNode,
-      };
+      await this.db.deleteChunksForFile(filePath, validHashes);
+
+      await this.indexChunks(chunks, filePath, fileHash);
+
+      return { filePath, fileHash };
     } catch (err) {
       console.error(`Indexing failed for ${filePath}`, err);
       vscode.window.showErrorMessage(
@@ -53,36 +152,5 @@ export class CodeIndexer {
       );
       return null;
     }
-  }
-
-  /**
-   * Extract semantic chunks from an AST.
-   * Default implementation: single chunk (whole file).
-   * Subclasses can override for finer-grained chunking.
-   */
-  protected extractChunks(
-    filePath: string,
-    ast: any,
-    content: string
-  ): CodeChunk[] {
-    return [
-      {
-        id: sha256Hex(filePath + content),
-        filePath,
-        text: content,
-        code: content,
-        name: "root",
-        type: "file",
-        hash: sha256Hex(content),
-        startLine: 1,
-        endLine: content.split("\n").length,
-        startPosition: { row: 1, column: 0 },
-        endPosition: { row: content.split("\n").length, column: 0 },
-        range: {
-          start: { row: 1, column: 0 },
-          end: { row: content.split("\n").length, column: 0 },
-        },
-      },
-    ];
   }
 }
