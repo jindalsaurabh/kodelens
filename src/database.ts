@@ -289,8 +289,6 @@ async deleteChunksForFile(filePath: string, validChunkHashes: string[]): Promise
 
 }
 
-
-
   //getChunkByHash → lets you detect unchanged chunks quickly.
   public getChunkByHash(chunkHash: string): CodeChunk | null {
   const row = this.db

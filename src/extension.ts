@@ -10,7 +10,7 @@ import { LocalCache, ILocalCache } from "./database";
 import { CodeChunk } from "./types";
 import { SemanticCodeIndexer } from "./SemanticCodeIndexer";
 import { createEmbeddingService } from "./services/embeddingFactory";
-
+import { ApexAdapter } from "./adapters/ApexAdapter";
 
 let codeIndexer: CodeIndexer;
 let resultsProvider: ResultsProvider;
@@ -18,6 +18,7 @@ let resultsTreeView: vscode.TreeView<ResultItem>;
 let outputChannel: vscode.OutputChannel;
 
 export async function activate(context: vscode.ExtensionContext) {
+  
   outputChannel = vscode.window.createOutputChannel("Kodelens-Debug");
   outputChannel.show(true);
   outputChannel.appendLine("=== Kodelens Initialization ===");
@@ -41,7 +42,13 @@ export async function activate(context: vscode.ExtensionContext) {
     // Create DB/cache
   const cache = new LocalCache(workspaceRoot);
 
-  const embeddingService = createEmbeddingService(embeddingModel, apiKey);
+//  const embeddingService = await createEmbeddingService(embeddingModel, apiKey);
+  const embeddingService = await createEmbeddingService(embeddingModel, 
+embeddingModel === "openai" ? openAiApiKey : googleApiKey);
+
+const indexer = new SemanticCodeIndexer(workspaceRoot, context, cache, embeddingModel);
+//const indexer = new SemanticCodeIndexer(workspaceRoot, context, cache, embeddingModel, apiKey);  
+/*  
   // Create semantic indexer
   const indexer = new SemanticCodeIndexer(
     workspaceRoot,
@@ -50,15 +57,15 @@ export async function activate(context: vscode.ExtensionContext) {
     embeddingModel,
     embeddingModel === "openai" ? openAiApiKey : googleApiKey
   );
-
-  
-  
+*/
 
   // Example: index all files when extension activates
   // (Later we can hook this to commands/events)
   vscode.window.showInformationMessage(`KodeLens using ${embeddingModel} embeddings`);
-  
-  codeIndexer = new CodeIndexer(workspaceRoot, context);
+  const apexAdapter = new ApexAdapter(context); // create adapter instance
+  codeIndexer = new CodeIndexer(workspaceRoot, context, cache, apexAdapter, embeddingService);
+
+  //codeIndexer = new CodeIndexer(workspaceRoot, context);
 
   resultsProvider = new ResultsProvider();
   resultsTreeView = vscode.window.createTreeView("kodelens-results", {

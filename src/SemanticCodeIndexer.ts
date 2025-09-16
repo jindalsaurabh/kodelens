@@ -2,9 +2,9 @@
 import * as vscode from "vscode";
 import { CodeIndexer } from "./CodeIndexer";
 import { LocalCache } from "./database";
-import { EmbeddingService } from "./services/embeddings";
 import { CodeChunk } from "./types";
 import { createEmbeddingService } from "./services/embeddingFactory";
+import { EmbeddingService } from "./services/embeddings";
 
 /**
  * SemanticCodeIndexer
@@ -12,18 +12,23 @@ import { createEmbeddingService } from "./services/embeddingFactory";
  */
 export class SemanticCodeIndexer extends CodeIndexer {
   private cache: LocalCache;
-  private embeddingService: EmbeddingService;
+  //protected embeddingService?: EmbeddingService;
 
   constructor(
     workspaceRoot: string,
     context: vscode.ExtensionContext,
     cache: LocalCache,
-    embeddingChoice: string = "mock",
-    apiKey?: string
+    apexAdapter: any = {} as any
   ) {
-    super(workspaceRoot, context);
+    super(workspaceRoot, context, cache, apexAdapter);
     this.cache = cache;
-    this.embeddingService = createEmbeddingService(embeddingChoice, apiKey);
+  }
+
+  /**
+   * Initialize async services (embeddingService)
+   */
+  async init(embeddingChoice: string = "mock", apiKey?: string): Promise<void> {
+    this.embeddingService = await createEmbeddingService(embeddingChoice, apiKey);
   }
 
   /**
@@ -34,8 +39,15 @@ export class SemanticCodeIndexer extends CodeIndexer {
     if (!result) {return;}
 
     // Extract chunks using CodeIndexer logic
-    // TODO: replace with real AST-based chunk extraction
-    const chunks: CodeChunk[] = this.extractChunks(filePath, result.ast, content);
+    // Use a protected getter to access extractor from CodeIndexer
+    const chunks: CodeChunk[] = this.getExtractor().extractChunks(filePath, content);
+    console.log("Chunks extracted:", chunks);
+
+    // Ensure embedding service is initialized
+    if (!this.embeddingService) {
+      console.warn("Embedding service not initialized, skipping embeddings");
+      return;
+    }
 
     // Generate embeddings for each chunk
     const embeddings = await this.embeddingService.generateEmbeddings(
@@ -43,6 +55,21 @@ export class SemanticCodeIndexer extends CodeIndexer {
     );
 
     // Insert into DB with embeddings
-    this.cache.insertChunksWithEmbeddings(chunks, filePath, result.hash, embeddings);
+    await this.cache.insertChunksWithEmbeddings(
+      chunks,
+      filePath,
+      result.fileHash,
+      embeddings
+    );
+
+    console.info(`SemanticCodeIndexer: indexed ${chunks.length} chunks with embeddings for ${filePath}`);
+  }
+
+  /**
+   * Protected getter for the extractor (CodeIndexer.extractor is private)
+   */
+  private getExtractor() {
+    // @ts-ignore: access private member from parent class
+    return this.extractor;
   }
 }

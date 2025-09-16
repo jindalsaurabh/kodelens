@@ -3,7 +3,6 @@ export interface EmbeddingService {
     generateEmbedding(text: string): Promise<Float32Array>;
     generateEmbeddings(texts: string[]): Promise<Float32Array[]>;
 }
-
 export class MockEmbeddingService implements EmbeddingService {
     constructor(dim?: number);
     dim(): number;

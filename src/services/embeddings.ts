@@ -7,6 +7,7 @@ export interface EmbeddingService {
   generateEmbedding(text: string): Promise<Float32Array>;
   /** Generate embeddings for multiple inputs */
   generateEmbeddings(texts: string[]): Promise<Float32Array[]>;
+  batchSize?: number;
 }
 
 /**

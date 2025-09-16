@@ -1,7 +1,7 @@
 import { CodeIndexer } from "../CodeIndexer";
 import { CodeChunk } from "../types";
 import { ApexAdapter } from "../adapters/ApexAdapter";
-import { LocalCacheMock } from "./mocks/LocalCacheMock";
+import { LocalCacheMock } from "../__mocks__/LocalCacheMock";
 import { generateHash } from "../utils";
 
 describe("CodeIndexer Delta Indexing & Stale Cleanup", () => {
