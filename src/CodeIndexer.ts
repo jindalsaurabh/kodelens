@@ -7,6 +7,7 @@ import { ApexChunkExtractor } from "./extractors/ApexChunkExtractor";
 import { ApexAdapter } from "./adapters/ApexAdapter";
 import { LocalCache } from "./database";
 import { UnifiedEmbeddingService } from "./services/UnifiedEmbeddingService";
+import { EmbeddingService } from "./services/embeddings";
 
 /**
  * CodeIndexer indexes files in a workspace:
@@ -16,14 +17,14 @@ import { UnifiedEmbeddingService } from "./services/UnifiedEmbeddingService";
  *  - handles delta/upsert and garbage collection
  */
 export class CodeIndexer {
-  private extractor: ApexChunkExtractor;
+  protected extractor: ApexChunkExtractor;
 
   constructor(
     private workspaceRoot: string,
     private context: vscode.ExtensionContext,
     private db: LocalCache,
     private apexAdapter: ApexAdapter,
-    private embeddingService?: UnifiedEmbeddingService
+    protected embeddingService?: EmbeddingService
   ) {
     this.extractor = new ApexChunkExtractor(this.apexAdapter);
   }
