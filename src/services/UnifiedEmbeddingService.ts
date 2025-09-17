@@ -1,17 +1,36 @@
+// src/services/UnifiedEmbeddingService.ts
 import { EmbeddingService } from "./embeddings";
+import { BgeMicroEmbeddingService } from "./BgeMicroEmbeddingService";
+// import { OpenAIEmbeddingService } from "./OpenAIEmbeddingService";
+// import { GeminiEmbeddingService } from "./GeminiEmbeddingService";
 
-/**
- * UnifiedEmbeddingService
- * Wraps any embedding provider (OpenAI, Google Gemini, Mock, etc.)
- * Adds:
- *  - Batch handling (prefers generateEmbeddings)
- *  - Fallback to per-item embedding if batch not available
- *  - Retry and logging for individual failures
- */
 export class UnifiedEmbeddingService implements EmbeddingService {
-public batchSize: number;
+  public batchSize: number;
+  public provider: EmbeddingService;
 
-  constructor(public provider: EmbeddingService, batchSize = 32) {this.batchSize = batchSize;}
+  constructor(provider: EmbeddingService, batchSize = 32) {
+    this.provider = provider;
+    this.batchSize = batchSize;
+  }
+
+  // ✅ Optional: convenience factory
+  static fromProviderName(name: string, apiKey: string): UnifiedEmbeddingService {
+    let provider: EmbeddingService;
+    switch (name) {
+      case "bge-micro":
+        provider = new BgeMicroEmbeddingService(apiKey);
+        break;
+      // case "openai":
+      //   provider = new OpenAIEmbeddingService(apiKey);
+      //   break;
+      // case "gemini":
+      //   provider = new GeminiEmbeddingService(apiKey);
+      //   break;
+      default:
+        throw new Error(`Unknown provider: ${name}`);
+    }
+    return new UnifiedEmbeddingService(provider);
+  }
 
   dim(): number {
     return this.provider.dim();
@@ -22,28 +41,25 @@ public batchSize: number;
       return await this.provider.generateEmbedding(text);
     } catch (err) {
       console.error("KodeLens: embedding failed for single item", err, text);
-      // fallback to zero vector on failure
       return new Float32Array(this.dim());
     }
   }
 
   async generateEmbeddings(texts: string[]): Promise<Float32Array[]> {
-    // Prefer batch API if available
     if (typeof this.provider.generateEmbeddings === "function") {
       try {
         return await this.provider.generateEmbeddings(texts);
       } catch (err) {
-        console.error("KodeLens: batch embedding failed, falling back to single-item", err);
+        console.error("KodeLens: batch embedding failed", err);
       }
     }
 
-    // Fallback: per-item embeddings
+    // fallback: per-item
     const results: Float32Array[] = [];
     for (const t of texts) {
       try {
         results.push(await this.generateEmbedding(t));
-      } catch (err) {
-        console.error("KodeLens: per-item embedding failed", err, t);
+      } catch {
         results.push(new Float32Array(this.dim()));
       }
     }

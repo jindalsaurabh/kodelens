@@ -5,7 +5,7 @@ import { GoogleGeminiEmbeddingService } from "./GoogleGeminiEmbeddingService";
 
 /**
  * Factory to create an EmbeddingService instance
- * @param choice "openai" | "google" | "mock" | "local"
+ * @param choice "openai" | "google" | "mock" | "local-bge"
  * @param apiKey optional API key for cloud providers
  */
 export async function createEmbeddingService(
@@ -24,10 +24,13 @@ export async function createEmbeddingService(
     case "mock":
       return new MockEmbeddingService();
 
-    case "local":
-      // Dynamic import to load LocalEmbeddingService only when needed
-      const { LocalEmbeddingService } = await import( "../embeddings/LocalEmbeddingService.js");
-      return new LocalEmbeddingService();
+    case "local-bge":
+      // Lazy-load the local BGE embedding service so that dependencies
+      // are only required when explicitly chosen.
+      const { LocalBgeEmbeddingService } = await import(
+        "./LocalBgeEmbeddingService.js"
+      );
+      return new LocalBgeEmbeddingService();
 
     default:
       throw new Error(`Unknown embedding model: ${choice}`);

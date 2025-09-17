@@ -71,7 +71,7 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/jest": "^30.0.0",
     "@types/node": "^22.18.4",
-    "@types/vscode": "^1.103.0",
+    "@types/vscode": "^1.104.0",
     "@typescript-eslint/eslint-plugin": "^8.39.0",
     "@typescript-eslint/parser": "^8.39.0",
     "@vscode/vsce": "^3.6.0",
@@ -94,14 +94,20 @@
     "url": "https://github.com/jindalsaurabh/kodelens.git"
   },
   "dependencies": {
+    "@huggingface/inference": "^4.8.0",
     "@xenova/transformers": "^2.17.2",
     "better-sqlite3": "^12.2.0",
     "bindings": "^1.5.0",
     "dotenv": "^17.2.2",
     "file-uri-to-path": "^2.0.0",
     "google-auth-library": "^10.3.0",
+    "module-alias": "^2.2.3",
     "node-fetch": "^3.3.2",
     "openai": "^5.20.2",
     "web-tree-sitter": "^0.20.8"
-  }
+  },
+  "_moduleAliases": {
+  "vscode": "scripts/mocks/vscode"
+}
+
 }

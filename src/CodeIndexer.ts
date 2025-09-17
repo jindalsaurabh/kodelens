@@ -35,12 +35,11 @@ export class CodeIndexer {
   async indexChunks(
     chunks: CodeChunk[],
     filePath: string,
-    fileHash: string
+    fileHash: string,
+    embddings?: Float32Array[]
   ): Promise<void> {
     // collect only new/changed chunks
     const toIndex: CodeChunk[] = [];
-    
-
     for (const chunk of chunks) {
       const chunkHash =
         chunk.hash ?? computeChunkHash(filePath, chunk.code ?? chunk.text ?? "", chunk.type);
