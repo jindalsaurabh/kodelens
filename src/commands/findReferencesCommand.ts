@@ -1,44 +1,42 @@
-// src/commands/findReferencesCommand.ts
 import * as vscode from "vscode";
 import { LocalCache } from "../database";
 import { findRelevantChunks } from "../retrieval";
+import { CodeIndexer } from "../CodeIndexer";
+import { ResultsProvider } from "../ResultsProvider";
 
 export function registerFindReferencesCommand(
   context: vscode.ExtensionContext,
-  outputChannel: vscode.OutputChannel
+  outputChannel: vscode.OutputChannel,
+  cache: LocalCache,
+  codeIndexer: CodeIndexer | undefined,
+  resultsProvider: ResultsProvider
 ) {
-  const command = vscode.commands.registerCommand(
-    "kodelens.findReferences",
-    async () => {
-      const editor = vscode.window.activeTextEditor;
-      if (!editor) {return vscode.window.showErrorMessage("No active editor");}
+  const disposable = vscode.commands.registerCommand("kodelens.findReferences", async () => {
+    if (!codeIndexer) {return vscode.window.showErrorMessage("Indexer not ready");}
 
-      const wordRange = editor.document.getWordRangeAtPosition(editor.selection.start);
-      if (!wordRange) {return vscode.window.showErrorMessage("Place cursor on a word");}
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {return vscode.window.showErrorMessage("No active editor");}
 
-      const symbolName = editor.document.getText(wordRange);
-      outputChannel.appendLine(`Finding references for: ${symbolName}`);
+    const wordRange = editor.document.getWordRangeAtPosition(editor.selection.start);
+    if (!wordRange) {return vscode.window.showErrorMessage("Place cursor on a word");}
 
-      const dbPath = vscode.Uri.joinPath(context.globalStorageUri, "kodelens-cache.sqlite").fsPath;
-      const cache = new LocalCache(dbPath);
-      cache.init();
+    const symbolName = editor.document.getText(wordRange);
+    outputChannel.appendLine(`Finding references for: ${symbolName}`);
 
-      try {
-        const relevantChunks = await findRelevantChunks(symbolName, cache);
-        if (relevantChunks.length) {
-          vscode.window.showInformationMessage(`Found ${relevantChunks.length} references`);
-        } else {
-          vscode.window.showInformationMessage("No references found");
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        outputChannel.appendLine(`Error: ${msg}`);
-        vscode.window.showErrorMessage(`Failed to find references: ${msg}`);
-      } finally {
-        cache.close();
+    try {
+      const relevantChunks = await findRelevantChunks(symbolName, cache);
+      if (relevantChunks.length) {
+        resultsProvider.setResults(relevantChunks);
+        vscode.window.showInformationMessage(`Found ${relevantChunks.length} references`);
+      } else {
+        vscode.window.showInformationMessage("No references found");
       }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      outputChannel.appendLine(`Error finding references: ${msg}`);
+      vscode.window.showErrorMessage(`Failed to find references: ${msg}`);
     }
-  );
+  });
 
-  context.subscriptions.push(command);
+  context.subscriptions.push(disposable);
 }
