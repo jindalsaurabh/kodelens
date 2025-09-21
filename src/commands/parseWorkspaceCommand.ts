@@ -1,7 +1,6 @@
+// src/commands/parseWorkspaceCommand.ts
 import * as vscode from "vscode";
-import * as crypto from "crypto";
-import { extractChunks } from "../chunking";
-import { safeParse } from "../services/parserService";
+import { SemanticCodeIndexer } from "../SemanticCodeIndexer";
 import { LocalCache } from "../database";
 
 export function registerParseWorkspaceCommand(
@@ -19,39 +18,49 @@ export function registerParseWorkspaceCommand(
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
-        title: "Kodelens: Parsing workspace Apex files...",
+        title: "Kodelens: Parsing & embedding workspace Apex files...",
         cancellable: true,
       },
       async (progress, token) => {
-        const apexFiles = await vscode.workspace.findFiles("**/*.{cls,trigger}", "**/node_modules/**");
-        outputChannel.appendLine(`Found ${apexFiles.length} Apex files`);
+        try {
+          // ✅ Use SemanticCodeIndexer
+          const indexer = new SemanticCodeIndexer(workspaceRoot, context, cache);
+          await indexer.init("mock"); // or "bge" / "openai" / "gemini" depending on user choice
 
-        let totalChunks = 0;
-        for (let i = 0; i < apexFiles.length; i++) {
-          if (token.isCancellationRequested) {break;}
+          const apexFiles = await vscode.workspace.findFiles("**/*.{cls,trigger}", "**/node_modules/**");
+          outputChannel.appendLine(`Found ${apexFiles.length} Apex files`);
 
-          const fileUri = apexFiles[i];
-          try {
-            progress.report({ message: `Processing ${i + 1}/${apexFiles.length}`, increment: (1 / apexFiles.length) * 100 });
+          let totalChunks = 0;
+          for (let i = 0; i < apexFiles.length; i++) {
+            if (token.isCancellationRequested) {break;}
 
-            const doc = await vscode.workspace.openTextDocument(fileUri);
-            const sourceCode = doc.getText();
-            const fileHash = crypto.createHash("sha256").update(sourceCode).digest("hex");
+            const fileUri = apexFiles[i];
+            try {
+              progress.report({
+                message: `Processing ${i + 1}/${apexFiles.length}`,
+                increment: (1 / apexFiles.length) * 100,
+              });
 
-            const tree = await safeParse(workspaceRoot, context, sourceCode);
-            if (!tree) {continue;}
+              const doc = await vscode.workspace.openTextDocument(fileUri);
+              const sourceCode = doc.getText();
 
-            const chunks = extractChunks(fileUri.fsPath, tree.rootNode);
-            cache.insertChunks(chunks, fileUri.fsPath, fileHash);
-            totalChunks += chunks.length;
+              // ✅ This will parse, chunk, generate embeddings & cache
+              await indexer.indexFileWithEmbeddings(fileUri.fsPath, sourceCode);
 
-            outputChannel.appendLine(`Processed ${fileUri.fsPath} (${chunks.length} chunks)`);
-          } catch (err) {
-            outputChannel.appendLine(`Error processing ${fileUri.fsPath}: ${err}`);
+              totalChunks++; // we can refine this if we want per-file chunk counts
+              outputChannel.appendLine(`Indexed ${fileUri.fsPath}`);
+            } catch (err) {
+              outputChannel.appendLine(`Error processing ${fileUri.fsPath}: ${err}`);
+            }
           }
-        }
 
-        vscode.window.showInformationMessage(`Workspace parsing complete. ${totalChunks} chunks processed.`);
+          vscode.window.showInformationMessage(
+            `Workspace parsing complete. Indexed ${totalChunks} files with embeddings.`
+          );
+        } catch (err) {
+          vscode.window.showErrorMessage(`Kodelens: Failed to parse workspace - ${err}`);
+          outputChannel.appendLine(`❌ Workspace parse failed: ${err}`);
+        }
       }
     );
   });

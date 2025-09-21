@@ -37,6 +37,10 @@
       {
         "command": "kodelens.findReferences",
         "title": "KodeLens: Find All References"
+      },
+      {
+    "command": "kodelens.semanticSearchTest",
+    "title": "Kodelens: Semantic Search Test"
       }
     ],
     "views": {

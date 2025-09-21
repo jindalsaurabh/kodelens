@@ -16,7 +16,7 @@ export async function findRelevantChunks(question: string, cache: LocalCache): P
         return [];
     }
 
-    const relevantChunks = await cache.findChunksByKeywords(keywords);
+    const relevantChunks = cache.findChunksByKeywords(keywords);
     console.log('Chunks found from DB:', relevantChunks);
 
     relevantChunks.sort((a, b) => calculateScore(b, keywords) - calculateScore(a, keywords));
@@ -38,7 +38,7 @@ function calculateScore(chunk: CodeChunk, keywords: string[]): number {
 
 /**
  * ---------------------------
- * Semantic retrieval (optional, new)
+ * Semantic retrieval
  * ---------------------------
  */
 function cosine(a: Float32Array, b: Float32Array): number {
@@ -69,8 +69,10 @@ export class SemanticRetrievalService {
 
     async rankCandidatesByQuery(query: string, candidateIds: string[]): Promise<{ id: string; score: number }[]> {
         if (!candidateIds || candidateIds.length === 0) {return [];}
+
         const qEmb = await this.embeddingService.generateEmbedding(query);
         const rows = this.cache.getEmbeddingsByIds(candidateIds);
+
         const scored: { id: string; score: number }[] = [];
 
         for (const r of rows) {
@@ -97,10 +99,13 @@ export class SemanticRetrievalService {
             candidateChunks = this.cache.findChunksByKeywords(keywords).slice(0, maxCandidates);
         }
 
+        // ✅ Filter out undefined IDs
         let candidateIds: string[] = [];
         if (candidateChunks.length > 0) {
-              candidateIds = candidateChunks.map(c => c.id).filter((id): id is string => id !== undefined);
-            } else {
+            candidateIds = candidateChunks
+                .map(c => c.id)
+                .filter((id): id is string => id !== undefined);
+        } else {
             const allEmb = this.cache.getAllEmbeddings();
             candidateIds = allEmb.slice(0, maxCandidates).map(r => r.id);
         }
@@ -111,8 +116,11 @@ export class SemanticRetrievalService {
         const results: { chunk: CodeChunk; score: number }[] = [];
         for (const r of top) {
             const chunk = this.cache.getChunkById(r.id);
-            if (chunk) {results.push({ chunk, score: r.score });}
+            if (chunk) {
+                results.push({ chunk, score: r.score });
+            }
         }
+
         return results;
     }
 }

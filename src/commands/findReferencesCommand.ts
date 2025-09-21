@@ -25,11 +25,13 @@ export function registerFindReferencesCommand(
 
     try {
       const relevantChunks = await findRelevantChunks(symbolName, cache);
-      if (relevantChunks.length) {
+      if (relevantChunks.length > 0) {
         resultsProvider.setResults(relevantChunks);
+        const topChunk = relevantChunks[0];
         vscode.window.showInformationMessage(`Found ${relevantChunks.length} references`);
+        vscode.window.showInformationMessage(`Top result: ${topChunk.text.slice(0, 100)}...`);
       } else {
-        vscode.window.showInformationMessage("No references found");
+        vscode.window.showInformationMessage("No relevant references found");
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

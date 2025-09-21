@@ -3,7 +3,7 @@ import * as crypto from "crypto";
 import { extractChunks } from "../chunking";
 import { safeParse } from "../services/parserService";
 import { LocalCache } from "../database";
-import { CodeChunk } from "../types";
+import * as path from "path";
 
 export function registerParseApexCommand(
   context: vscode.ExtensionContext,
@@ -18,7 +18,6 @@ export function registerParseApexCommand(
       return;
     }
 
-    const filePath = editor.document.fileName;
     const sourceCode = editor.document.getText();
     const fileHash = crypto.createHash("sha256").update(sourceCode).digest("hex");
 
@@ -26,19 +25,15 @@ export function registerParseApexCommand(
       const tree = await safeParse(workspaceRoot, context, sourceCode);
       if (!tree) {throw new Error("Parse failed");}
 
-      const chunks: CodeChunk[] = extractChunks(filePath, tree.rootNode);
-      outputChannel.appendLine(`Found ${chunks.length} chunks`);
+      // Make path relative to workspace root
+      const relativePath = path.relative(workspaceRoot, editor.document.fileName);
 
-      // use shared cache (already initialized)
-      let newChunks = 0, cachedChunks = 0;
-      for (const chunk of chunks) {
-        const inserted = cache.insertChunk(chunk, filePath, fileHash);
-        inserted ? newChunks++ : cachedChunks++;
-      }
+      const chunks = extractChunks(relativePath, tree.rootNode);
+      chunks.forEach(chunk => chunk.filePath = relativePath);
+      //cache.insertChunks(chunks, relativePath, fileHash);
 
-      const msg = `Processed ${chunks.length} chunks. ${newChunks} new, ${cachedChunks} cached.`;
-      outputChannel.appendLine(msg);
-      vscode.window.showInformationMessage(msg);
+      outputChannel.appendLine(`Processed ${chunks.length} chunks for ${editor.document.fileName}`);
+      vscode.window.showInformationMessage(`Processed ${chunks.length} chunks for ${editor.document.fileName}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       outputChannel.appendLine(`Error parsing file: ${msg}`);

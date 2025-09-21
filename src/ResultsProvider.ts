@@ -1,6 +1,6 @@
 // src/ResultsProvider.ts
 import * as vscode from 'vscode';
-//import { CodeChunk } from './chunking';
+import * as path from 'path';
 import { CodeChunk } from './types';
 
 /**
@@ -36,7 +36,6 @@ export class ResultsProvider implements vscode.TreeDataProvider<ResultItem> {
     }
 
     getParent(element: ResultItem): vscode.ProviderResult<ResultItem> {
-        // Flat list → no parent
         return null;
     }
 }
@@ -48,21 +47,37 @@ export class ResultItem extends vscode.TreeItem {
     constructor(public readonly chunk: CodeChunk) {
         super(chunk.name ?? "Unnamed", vscode.TreeItemCollapsibleState.None);
 
-        this.description = `${chunk.type} • ${this.getFileBasename(chunk.filePath)}`;
+        this.description = `${chunk.type ?? "unknown"} • ${this.getFileBasename(chunk.filePath)}`;
         this.tooltip = this.getTooltip();
 
-        // Clicking opens the file at the exact range
+        // Determine selection range
+        let selection: vscode.Range | undefined = undefined;
+        if (chunk.range) {
+            const start = new vscode.Position(chunk.range.start.row, chunk.range.start.column);
+            const end = new vscode.Position(chunk.range.end.row, chunk.range.end.column);
+            selection = new vscode.Range(start, end);
+        } else if (chunk.startLine !== undefined && chunk.endLine !== undefined) {
+            const start = new vscode.Position(chunk.startLine, 0);
+            const end = new vscode.Position(chunk.endLine, 0);
+            selection = new vscode.Range(start, end);
+        }
+
+        // Resolve workspace-relative path
+        const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "";
+        const absoluteFilePath = path.isAbsolute(chunk.filePath)
+            ? chunk.filePath
+            : path.join(workspaceRoot, chunk.filePath);
+
         this.command = {
             command: 'vscode.open',
             title: 'Open File',
             arguments: [
-                vscode.Uri.file(chunk.filePath),
-                { selection: chunk.range }
+                vscode.Uri.file(absoluteFilePath),
+                selection ? { selection } : undefined
             ]
         };
 
         this.iconPath = this.getIconPath(chunk.type ?? "unknown");
-
     }
 
     private getFileBasename(filePath: string): string {
@@ -70,29 +85,20 @@ export class ResultItem extends vscode.TreeItem {
     }
 
     private getTooltip(): string {
-//        return `${this.chunk.type} ${this.chunk.name}\n${this.chunk.filePath}\nLine ${this.chunk.startLine + 1}`;
         return `${this.chunk.type ?? "unknown"} ${this.chunk.name ?? "Unnamed"}\n` +
-       `${this.chunk.filePath ?? ""}\n` +
-       `Line ${(this.chunk.startLine ?? 0) + 1}`;
-
+               `${this.chunk.filePath ?? ""}\n` +
+               `Line ${(this.chunk.startLine ?? 0) + 1}`;
     }
 
     private getIconPath(type: string): vscode.ThemeIcon {
         switch (type) {
-            case 'class':
-                return new vscode.ThemeIcon('symbol-class');
-            case 'method':
-                return new vscode.ThemeIcon('symbol-method');
-            case 'interface':
-                return new vscode.ThemeIcon('symbol-interface');
-            case 'property':
-                return new vscode.ThemeIcon('symbol-property');
-            case 'variable':
-                return new vscode.ThemeIcon('symbol-variable');
-            case 'trigger':
-                return new vscode.ThemeIcon('symbol-event'); // For triggers
-            default:
-                return new vscode.ThemeIcon('symbol-key');
+            case 'class': return new vscode.ThemeIcon('symbol-class');
+            case 'method': return new vscode.ThemeIcon('symbol-method');
+            case 'interface': return new vscode.ThemeIcon('symbol-interface');
+            case 'property': return new vscode.ThemeIcon('symbol-property');
+            case 'variable': return new vscode.ThemeIcon('symbol-variable');
+            case 'trigger': return new vscode.ThemeIcon('symbol-event');
+            default: return new vscode.ThemeIcon('symbol-key');
         }
     }
 }

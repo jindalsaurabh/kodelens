@@ -6,7 +6,7 @@ import { ApexAdapter } from "./adapters/ApexAdapter";
 import { CodeIndexer } from "./CodeIndexer";
 import { ResultsProvider } from "./ResultsProvider";
 import { initParserForWorkspace } from "./services/parserService";
-
+import { registerSemanticSearchCommand } from "./commands/semanticSearchCommand";
 import { registerParseApexCommand } from "./commands/parseApexCommand";
 import { registerAskQuestionCommand } from "./commands/askQuestionCommand";
 import { registerParseWorkspaceCommand } from "./commands/parseWorkspaceCommand";
@@ -44,6 +44,11 @@ export async function activate(context: vscode.ExtensionContext) {
   // embedding service, indexer, results provider
   const embeddingService = await createEmbeddingService(embeddingModel, apiKey);
   resultsProvider = new ResultsProvider();
+  vscode.window.createTreeView("kodelens-results", {
+  treeDataProvider: resultsProvider,
+  showCollapseAll: true,
+    });
+
   const indexer = new SemanticCodeIndexer(workspaceRoot, context, cache, embeddingModel);
   const apexAdapter = new ApexAdapter(context);
   codeIndexer = new CodeIndexer(workspaceRoot, context, cache, apexAdapter, embeddingService);
@@ -62,6 +67,8 @@ export async function activate(context: vscode.ExtensionContext) {
   registerAskQuestionCommand(context, outputChannel, cache, resultsProvider);
   registerParseWorkspaceCommand(context, outputChannel, cache, workspaceRoot);
   registerFindReferencesCommand(context, outputChannel, cache, codeIndexer, resultsProvider);
+  registerSemanticSearchCommand(context, outputChannel, cache);
+
 
   context.subscriptions.push(outputChannel);
 }

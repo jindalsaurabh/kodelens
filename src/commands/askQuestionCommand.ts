@@ -19,6 +19,7 @@ export function registerAskQuestionCommand(
 
       if (relevantChunks.length > 0) {
         resultsProvider.setResults(relevantChunks);
+        vscode.window.showInformationMessage(`Found ${relevantChunks.length} references`);
         vscode.window.showInformationMessage(`Top result: ${relevantChunks[0].text.slice(0, 100)}...`);
       } else {
         vscode.window.showInformationMessage("No relevant code found.");

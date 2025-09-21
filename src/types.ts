@@ -8,24 +8,6 @@ export interface SimpleRange {
   start: Point;
   end: Point;
 }
-
-/*
-export interface CodeChunk {
-  id: string;
-  hash: string;
-  filePath: string;
-  type: string;
-  name: string;
-  code: string;
-  text: string;
-  startLine: number;
-  endLine: number;
-  startPosition: Point;
-  endPosition: Point;
-  range: SimpleRange;
-}
-*/
-
 export interface CodeChunk {
   id?: string;
   hash?: string;
