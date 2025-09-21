@@ -46,7 +46,7 @@ export class ResultsProvider implements vscode.TreeDataProvider<ResultItem> {
  */
 export class ResultItem extends vscode.TreeItem {
     constructor(public readonly chunk: CodeChunk) {
-        super(chunk.name, vscode.TreeItemCollapsibleState.None);
+        super(chunk.name ?? "Unnamed", vscode.TreeItemCollapsibleState.None);
 
         this.description = `${chunk.type} • ${this.getFileBasename(chunk.filePath)}`;
         this.tooltip = this.getTooltip();
@@ -61,7 +61,8 @@ export class ResultItem extends vscode.TreeItem {
             ]
         };
 
-        this.iconPath = this.getIconPath(chunk.type);
+        this.iconPath = this.getIconPath(chunk.type ?? "unknown");
+
     }
 
     private getFileBasename(filePath: string): string {
@@ -69,7 +70,11 @@ export class ResultItem extends vscode.TreeItem {
     }
 
     private getTooltip(): string {
-        return `${this.chunk.type} ${this.chunk.name}\n${this.chunk.filePath}\nLine ${this.chunk.startLine + 1}`;
+//        return `${this.chunk.type} ${this.chunk.name}\n${this.chunk.filePath}\nLine ${this.chunk.startLine + 1}`;
+        return `${this.chunk.type ?? "unknown"} ${this.chunk.name ?? "Unnamed"}\n` +
+       `${this.chunk.filePath ?? ""}\n` +
+       `Line ${(this.chunk.startLine ?? 0) + 1}`;
+
     }
 
     private getIconPath(type: string): vscode.ThemeIcon {

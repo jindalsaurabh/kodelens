@@ -99,8 +99,8 @@ export class SemanticRetrievalService {
 
         let candidateIds: string[] = [];
         if (candidateChunks.length > 0) {
-            candidateIds = candidateChunks.map(c => c.id);
-        } else {
+              candidateIds = candidateChunks.map(c => c.id).filter((id): id is string => id !== undefined);
+            } else {
             const allEmb = this.cache.getAllEmbeddings();
             candidateIds = allEmb.slice(0, maxCandidates).map(r => r.id);
         }

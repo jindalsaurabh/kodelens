@@ -5,24 +5,23 @@
   "description": "Talk to your code",
   "version": "0.0.1",
   "engines": {
-    "vscode": "^1.103.0"
+    "vscode": "^1.104.0"
   },
   "categories": [
     "Other"
   ],
   "activationEvents": [
-    "onCommand:kodelens.parseApex"
-  ],
+  "onCommand:kodelens.askQuestion",
+  "onCommand:kodelens.findReferences",
+  "onCommand:kodelens.parseWorkspace",
+  "onCommand:kodelens.parseApex"
+],
   "vsce": {
     "includeDependencies": true
   },
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
-      {
-        "command": "kodelens.testParse",
-        "title": "Kodelens: Test Parse"
-      },
       {
         "command": "kodelens.parseApex",
         "title": "Kodelens: Parse Apex File"
@@ -107,7 +106,6 @@
     "web-tree-sitter": "^0.20.8"
   },
   "_moduleAliases": {
-  "vscode": "scripts/mocks/vscode"
-}
-
+    "vscode": "scripts/mocks/vscode"
+  }
 }

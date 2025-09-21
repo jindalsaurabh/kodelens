@@ -68,6 +68,14 @@ export class LocalCacheMock implements ILocalCache {
     }
   }
 
+  insertOrUpdateChunk(chunk: CodeChunk, fileHash: string, embedding?: Float32Array): boolean {
+    return true;
+  }
+
+  getChunkByHash(chunkHash: string): CodeChunk | null {
+    return null;
+  }
+
   close(): void {
     // no-op
   }

@@ -1,7 +1,9 @@
-//src/database.ts
-import Database from 'better-sqlite3';
-import { CodeChunk } from './types';
-import { generateHash } from './utils';
+// src/database.ts
+import Database from "better-sqlite3";
+import { CodeChunk } from "./types";
+import { generateHash } from "./utils";
+import * as fs from "fs";
+import * as path from "path";
 
 export interface ILocalCache {
   init(): void;
@@ -10,8 +12,20 @@ export interface ILocalCache {
   findChunksByKeywords(keywords: string[]): CodeChunk[];
   close(): void;
 
-  // New semantic methods
-  insertChunksWithEmbeddings(chunks: CodeChunk[], filePath: string, fileHash: string, embeddings: Float32Array[]): number;
+  // Semantic methods
+  insertChunksWithEmbeddings(
+    chunks: CodeChunk[],
+    filePath: string,
+    fileHash: string,
+    embeddings: Float32Array[]
+  ): number;
+  insertOrUpdateChunk(
+    chunk: CodeChunk,
+    fileHash: string,
+    embedding?: Float32Array
+  ): boolean;
+  deleteChunksForFile(filePath: string, validChunkHashes: string[]): Promise<void>;
+  getChunkByHash(chunkHash: string): CodeChunk | null;
   getEmbeddingsByIds(ids: string[]): { id: string; embedding: Float32Array }[];
   getAllEmbeddings(): { id: string; embedding: Float32Array }[];
   getChunkById(id: string): CodeChunk | null;
@@ -33,10 +47,21 @@ type DbRow = {
 
 export class LocalCache implements ILocalCache {
   private db: Database.Database;
-  private readonly SCHEMA_VERSION = 2; // bumped for embedding column
+  private readonly SCHEMA_VERSION = 2;
 
-  constructor(dbPath: string = ':memory:') {
-    this.db = new Database(dbPath);
+  constructor(dbPath: string = ":memory:") {
+    try {
+      if (dbPath !== ":memory:") {
+        const dir = path.dirname(dbPath);
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+      }
+      this.db = new Database(dbPath);
+    } catch (err) {
+      console.error("❌ Failed to open database at", dbPath, err);
+      throw err;
+    }
   }
 
   init(): void {
@@ -47,11 +72,12 @@ export class LocalCache implements ILocalCache {
       );
     `);
 
-    const row = this.db.prepare('SELECT value FROM metadata WHERE key = ?').get('schema_version') as { value: string } | undefined;
+    const row = this.db
+      .prepare("SELECT value FROM metadata WHERE key = ?")
+      .get("schema_version") as { value: string } | undefined;
     const currentVersion = row ? Number(row.value) : 0;
 
     if (currentVersion < this.SCHEMA_VERSION) {
-      // Create or alter code_chunks table
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS code_chunks (
           id TEXT PRIMARY KEY,
@@ -72,11 +98,15 @@ export class LocalCache implements ILocalCache {
         CREATE UNIQUE INDEX IF NOT EXISTS idx_file_chunk ON code_chunks(file_path, chunk_hash);
       `);
 
-      this.db.prepare(
-        `INSERT OR REPLACE INTO metadata (key, value) VALUES ('schema_version', @version)`
-      ).run({ version: String(this.SCHEMA_VERSION) });
+      this.db
+        .prepare(
+          `INSERT OR REPLACE INTO metadata (key, value) VALUES ('schema_version', @version)`
+        )
+        .run({ version: String(this.SCHEMA_VERSION) });
     }
   }
+
+  /** ========== Basic Inserts ========== */
 
   insertChunk(chunk: CodeChunk, filePath: string, fileHash: string): boolean {
     const stmt = this.db.prepare(`
@@ -91,9 +121,9 @@ export class LocalCache implements ILocalCache {
         chunkId,
         filePath,
         fileHash,
-        chunk.hash || generateHash(chunk.code || ''),
-        chunk.type || 'unknown',
-        chunk.text || '',
+        chunk.hash || generateHash(chunk.code || ""),
+        chunk.type || "unknown",
+        chunk.text || "",
         Number(chunk.startPosition?.row ?? 0),
         Number(chunk.startPosition?.column ?? 0),
         Number(chunk.endPosition?.row ?? 0),
@@ -101,7 +131,7 @@ export class LocalCache implements ILocalCache {
       );
       return info.changes > 0;
     } catch (err) {
-      console.error('❌ Insert error:', err, 'Chunk:', chunk);
+      console.error("❌ Insert error:", err, "Chunk:", chunk);
       return false;
     }
   }
@@ -121,9 +151,9 @@ export class LocalCache implements ILocalCache {
           chunkId,
           filePath,
           fileHash,
-          chunk.hash || generateHash(chunk.code || ''),
-          chunk.type || 'unknown',
-          chunk.text || '',
+          chunk.hash || generateHash(chunk.code || ""),
+          chunk.type || "unknown",
+          chunk.text || "",
           Number(chunk.startPosition?.row ?? 0),
           Number(chunk.startPosition?.column ?? 0),
           Number(chunk.endPosition?.row ?? 0),
@@ -137,184 +167,175 @@ export class LocalCache implements ILocalCache {
     try {
       return insertMany(chunks);
     } catch (err) {
-      console.error('❌ Bulk insert error:', err);
+      console.error("❌ Bulk insert error:", err);
       return 0;
     }
   }
 
-  /** ---------------- Semantic Methods ---------------- */
+  /** ========== Embeddings ========== */
 
-  insertChunksWithEmbeddings(chunks: CodeChunk[], filePath: string, fileHash: string, embeddings: Float32Array[]): number {
-    if (chunks.length !== embeddings.length) {throw new Error("Chunks and embeddings length mismatch");}
+  insertChunksWithEmbeddings(
+    chunks: CodeChunk[],
+    filePath: string,
+    fileHash: string,
+    embeddings: Float32Array[]
+  ): number {
+    if (chunks.length !== embeddings.length) {
+      throw new Error("Chunks and embeddings length mismatch");
+    }
 
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO code_chunks
-      (id, file_path, file_hash, chunk_hash, chunk_type, chunk_text, start_line, start_column, end_line, end_column, embedding)
+      (id, file_path, file_hash, chunk_hash, chunk_type, chunk_text,
+       start_line, start_column, end_line, end_column, embedding)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    const insertMany = this.db.transaction((chunks: CodeChunk[], embeddings: Float32Array[]) => {
-      let count = 0;
-      for (let i = 0; i < chunks.length; i++) {
-        const c = chunks[i];
-        const emb = embeddings[i];
-        const chunkId = c.id || generateHash(`${filePath}:${c.hash}`);
-        const info = stmt.run(
-          chunkId,
-          filePath,
-          fileHash,
-          c.hash || generateHash(c.code || ''),
-          c.type || 'unknown',
-          c.text || '',
-          Number(c.startPosition?.row ?? 0),
-          Number(c.startPosition?.column ?? 0),
-          Number(c.endPosition?.row ?? 0),
-          Number(c.endPosition?.column ?? 0),
-          Buffer.from(emb.buffer) // store Float32Array as BLOB
-        );
-        if (info.changes > 0) {count++;}
+    const insertMany = this.db.transaction(
+      (chunks: CodeChunk[], embeddings: Float32Array[]) => {
+        let count = 0;
+        for (let i = 0; i < chunks.length; i++) {
+          const c = chunks[i];
+          const emb = embeddings[i];
+          const chunkId = c.id || generateHash(`${filePath}:${c.hash}`);
+          const info = stmt.run(
+            chunkId,
+            filePath,
+            fileHash,
+            c.hash || generateHash(c.code || ""),
+            c.type || "unknown",
+            c.text || "",
+            Number(c.startPosition?.row ?? 0),
+            Number(c.startPosition?.column ?? 0),
+            Number(c.endPosition?.row ?? 0),
+            Number(c.endPosition?.column ?? 0),
+            Buffer.from(emb.buffer) // Float32Array → BLOB
+          );
+          if (info.changes > 0) {count++;}
+        }
+        return count;
       }
-      return count;
-    });
+    );
 
     try {
       return insertMany(chunks, embeddings);
     } catch (err) {
-      console.error('❌ Bulk insert with embeddings error:', err);
+      console.error("❌ Bulk insert with embeddings error:", err);
       return 0;
     }
   }
 
-/**
- * Insert a chunk if new, or update if it exists.Ensures changed chunks are updated, not duplicated.  
- * Optionally store embedding if provided.
- */
-public insertOrUpdateChunk(chunk: CodeChunk, fileHash: string, embedding?: Float32Array): boolean {
-  const chunkId = chunk.id || generateHash(`${chunk.filePath}:${chunk.hash}`);
-  const chunkHash = chunk.hash || generateHash(chunk.code || '');
+  insertOrUpdateChunk(
+    chunk: CodeChunk,
+    fileHash: string,
+    embedding?: Float32Array
+  ): boolean {
+    const chunkId = chunk.id || generateHash(`${chunk.filePath}:${chunk.hash}`);
+    const chunkHash = chunk.hash || generateHash(chunk.code || "");
 
-  const stmt = this.db.prepare(`
-    INSERT INTO code_chunks
-      (id, file_path, file_hash, chunk_hash, chunk_type, chunk_text,
-       start_line, start_column, end_line, end_column, embedding)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET
-      file_hash = excluded.file_hash,
-      chunk_hash = excluded.chunk_hash,
-      chunk_type = excluded.chunk_type,
-      chunk_text = excluded.chunk_text,
-      start_line = excluded.start_line,
-      start_column = excluded.start_column,
-      end_line = excluded.end_line,
-      end_column = excluded.end_column,
-      embedding = excluded.embedding
-  `);
+    const stmt = this.db.prepare(`
+      INSERT INTO code_chunks
+        (id, file_path, file_hash, chunk_hash, chunk_type,
+         chunk_text, start_line, start_column, end_line, end_column, embedding)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        file_hash   = excluded.file_hash,
+        chunk_hash  = excluded.chunk_hash,
+        chunk_type  = excluded.chunk_type,
+        chunk_text  = excluded.chunk_text,
+        start_line  = excluded.start_line,
+        start_column= excluded.start_column,
+        end_line    = excluded.end_line,
+        end_column  = excluded.end_column,
+        embedding   = excluded.embedding
+    `);
 
-  try {
-    const info = stmt.run(
-      chunkId,
-      chunk.filePath,
-      fileHash, // fallback if fileHash not set
-      chunkHash,
-      chunk.type || 'unknown',
-      chunk.code || chunk.text || '',
-      Number(chunk.startPosition?.row ?? 0),
-      Number(chunk.startPosition?.column ?? 0),
-      Number(chunk.endPosition?.row ?? 0),
-      Number(chunk.endPosition?.column ?? 0),
-      embedding ? Buffer.from(embedding.buffer) : null
-    );
-
-    return info.changes > 0;
-  } catch (err) {
-    console.error('❌ insertOrUpdateChunk error:', err, 'Chunk:', chunk);
-    return false;
+    try {
+      const info = stmt.run(
+        chunkId,
+        chunk.filePath,
+        fileHash,
+        chunkHash,
+        chunk.type || "unknown",
+        chunk.code || chunk.text || "",
+        Number(chunk.startPosition?.row ?? 0),
+        Number(chunk.startPosition?.column ?? 0),
+        Number(chunk.endPosition?.row ?? 0),
+        Number(chunk.endPosition?.column ?? 0),
+        embedding ? Buffer.from(embedding.buffer) : null
+      );
+      return info.changes > 0;
+    } catch (err) {
+      console.error("❌ insertOrUpdateChunk error:", err, "Chunk:", chunk);
+      return false;
+    }
   }
-}
 
-
-/*
-insertOrUpdateChunk(chunk: CodeChunk, filePath: string, fileHash: string, embedding?: Float32Array | null): boolean {
-  const stmt = this.db.prepare(`
-    INSERT INTO code_chunks (
-      id, file_path, file_hash, chunk_hash, chunk_type,
-      chunk_text, start_line, start_column, end_line, end_column, embedding
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET
-      file_path   = excluded.file_path,
-      file_hash   = excluded.file_hash,
-      chunk_hash  = excluded.chunk_hash,
-      chunk_type  = excluded.chunk_type,
-      chunk_text  = excluded.chunk_text,
-      start_line  = excluded.start_line,
-      start_column= excluded.start_column,
-      end_line    = excluded.end_line,
-      end_column  = excluded.end_column,
-      embedding   = excluded.embedding
-  `);
-
-  const chunkId = chunk.id || generateHash(`${filePath}:${chunk.hash}`);
-  try {
-    const info = stmt.run(
-      chunkId,
-      filePath,
-      fileHash,
-      chunk.hash || generateHash(chunk.code || ''),
-      chunk.type || 'unknown',
-      chunk.text || '',
-      Number(chunk.startPosition?.row ?? 0),
-      Number(chunk.startPosition?.column ?? 0),
-      Number(chunk.endPosition?.row ?? 0),
-      Number(chunk.endPosition?.column ?? 0),
-      embedding ? Buffer.from(embedding.buffer) : null
-    );
-    return info.changes > 0;
-  } catch (err) {
-    console.error('❌ Upsert error:', err, 'Chunk:', chunk);
-    return false;
+  async deleteChunksForFile(filePath: string, validChunkHashes: string[]): Promise<void> {
+    const placeholders = validChunkHashes.map(() => "?").join(",") || "''";
+    const sql = `
+      DELETE FROM code_chunks 
+      WHERE file_path = ? 
+      AND chunk_hash NOT IN (${placeholders})
+    `;
+    const params = [filePath, ...validChunkHashes];
+    this.db.prepare(sql).run(...params);
   }
-}
-*/
 
-async deleteChunksForFile(filePath: string, validChunkHashes: string[]): Promise<void> {
-  const placeholders = validChunkHashes.map(() => "?").join(",") || "''";
-  const sql = `
-    DELETE FROM code_chunks 
-    WHERE file_path = ? 
-    AND chunk_hash NOT IN (${placeholders})
-  `;
-  const params = [filePath, ...validChunkHashes];
-  this.db.prepare(sql).run(...params);
+  /** ========== Retrieval ========== */
 
-}
-
-  //getChunkByHash → lets you detect unchanged chunks quickly.
-  public getChunkByHash(chunkHash: string): CodeChunk | null {
-  const row = this.db
-    .prepare(`SELECT * FROM code_chunks WHERE chunk_hash = ? LIMIT 1`)
-    .get(chunkHash) as DbRow | undefined;
-  return row ? this.mapRowToChunk(row) : null;
-}
-
+  getChunkByHash(chunkHash: string): CodeChunk | null {
+    const row = this.db
+      .prepare(`SELECT * FROM code_chunks WHERE chunk_hash = ? LIMIT 1`)
+      .get(chunkHash) as DbRow | undefined;
+    return row ? this.mapRowToChunk(row) : null;
+  }
 
   getEmbeddingsByIds(ids: string[]): { id: string; embedding: Float32Array }[] {
     if (ids.length === 0) {return [];}
-    const placeholders = ids.map(() => '?').join(',');
+    const placeholders = ids.map(() => "?").join(",");
     const sql = `SELECT id, embedding FROM code_chunks WHERE id IN (${placeholders})`;
-    const rows = this.db.prepare(sql).all(...ids) as { id: string; embedding: Buffer }[];
-    return rows.map(r => ({ id: r.id, embedding: new Float32Array(r.embedding.buffer) }));
+    const rows = this.db
+      .prepare(sql)
+      .all(...ids) as { id: string; embedding: Buffer }[];
+    return rows.map((r) => ({
+      id: r.id,
+      embedding: new Float32Array(r.embedding.buffer, r.embedding.byteOffset, r.embedding.byteLength / 4),
+    }));
   }
 
   getAllEmbeddings(): { id: string; embedding: Float32Array }[] {
-    const rows = this.db.prepare(`SELECT id, embedding FROM code_chunks WHERE embedding IS NOT NULL`).all() as { id: string; embedding: Buffer }[];
-    return rows.map(r => ({ id: r.id, embedding: new Float32Array(r.embedding.buffer) }));
+    const rows = this.db
+      .prepare(`SELECT id, embedding FROM code_chunks WHERE embedding IS NOT NULL`)
+      .all() as { id: string; embedding: Buffer }[];
+    return rows.map((r) => ({
+      id: r.id,
+      embedding: new Float32Array(r.embedding.buffer, r.embedding.byteOffset, r.embedding.byteLength / 4),
+    }));
   }
 
   getChunkById(id: string): CodeChunk | null {
-    const row = this.db.prepare(`SELECT * FROM code_chunks WHERE id = ?`).get(id) as DbRow | undefined;
+    const row = this.db
+      .prepare(`SELECT * FROM code_chunks WHERE id = ?`)
+      .get(id) as DbRow | undefined;
     return row ? this.mapRowToChunk(row) : null;
   }
+
+  findChunksByKeywords(keywords: string[]): CodeChunk[] {
+    if (keywords.length === 0) {return [];}
+    const conditions = keywords
+      .map(() => `chunk_text LIKE '%' || ? || '%'`)
+      .join(" OR ");
+    const sql = `SELECT * FROM code_chunks WHERE ${conditions} LIMIT 20`;
+    const rows = this.db.prepare(sql).all(...keywords) as DbRow[];
+    return rows.map((r) => this.mapRowToChunk(r));
+  }
+
+  close(): void {
+    this.db.close();
+  }
+
+  /** ========== Helpers ========== */
 
   private mapRowToChunk(row: DbRow): CodeChunk {
     const startPosition = { row: row.start_line, column: row.start_column };
@@ -332,20 +353,7 @@ async deleteChunksForFile(filePath: string, validChunkHashes: string[]): Promise
       endLine: row.end_line,
       startPosition,
       endPosition,
-      range
+      range,
     } as CodeChunk;
-  }
-
-  /** ---------------- Existing methods remain untouched ---------------- */
-  findChunksByKeywords(keywords: string[]): CodeChunk[] {
-    if (keywords.length === 0) {return [];}
-    const conditions = keywords.map(() => `chunk_text LIKE '%' || ? || '%'`).join(' OR ');
-    const sql = `SELECT * FROM code_chunks WHERE ${conditions} LIMIT 20`;
-    const rows = this.db.prepare(sql).all(...keywords) as DbRow[];
-    return rows.map(r => this.mapRowToChunk(r));
-  }
-
-  close(): void {
-    this.db.close();
   }
 }
