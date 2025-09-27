@@ -97,3 +97,9 @@ libtorch*
 
 #models
 embedding_model.pt
+
+#python venv
+venv
+venv/*
+.venv
+.venv/*
