@@ -91,3 +91,9 @@ test/snapshots/sampleFiles/*
 
 #js files
 *.js
+
+#LibTorch
+libtorch*
+
+#models
+embedding_model.pt
