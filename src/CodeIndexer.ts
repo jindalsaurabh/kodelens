@@ -6,7 +6,6 @@ import { generateHash, computeChunkHash } from "./utils";
 import { ApexChunkExtractor } from "./extractors/ApexChunkExtractor";
 import { ApexAdapter } from "./adapters/ApexAdapter";
 import { LocalCache } from "./database";
-import { UnifiedEmbeddingService } from "./services/UnifiedEmbeddingService";
 import { EmbeddingService } from "./services/embeddings";
 
 /**
@@ -21,9 +20,9 @@ export class CodeIndexer {
 
   constructor(
     private workspaceRoot: string,
-    private context: vscode.ExtensionContext,
-    private db: LocalCache,
-    private apexAdapter: ApexAdapter,
+    protected context: vscode.ExtensionContext,
+    protected db: LocalCache,
+    protected apexAdapter: ApexAdapter,
     protected embeddingService?: EmbeddingService
   ) {
     this.extractor = new ApexChunkExtractor(this.apexAdapter);
@@ -134,7 +133,8 @@ export class CodeIndexer {
       const normalized = content; // replace with normalizeCode(content) if needed
       const fileHash = generateHash(normalized);
 
-      const chunks = this.extractor.extractChunks(filePath, normalized);
+      const tree = this.apexAdapter.parse(normalized);
+      const chunks = this.extractor.extractChunks(filePath, tree.rootNode);
 
       const validHashes = chunks.map((c) =>
         computeChunkHash(filePath, c.code ?? c.text ?? "", c.type)

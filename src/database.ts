@@ -304,6 +304,22 @@ export class LocalCache implements ILocalCache {
     }));
   }
 
+  /** Get chunk count and embedding count for a given file */
+  getChunkStatsForFile(filePath: string): { total: number; withEmbeddings: number } {
+    const totalRow = this.db
+      .prepare(`SELECT COUNT(*) as count FROM code_chunks WHERE file_path = ?`)
+      .get(filePath) as { count: number };
+
+    const embRow = this.db
+      .prepare(`SELECT COUNT(*) as count FROM code_chunks WHERE file_path = ? AND embedding IS NOT NULL`)
+      .get(filePath) as { count: number };
+
+    return {
+      total: totalRow?.count || 0,
+      withEmbeddings: embRow?.count || 0,
+    };
+  }
+
   getAllEmbeddings(): { id: string; embedding: Float32Array }[] {
     const rows = this.db
       .prepare(`SELECT id, embedding FROM code_chunks WHERE embedding IS NOT NULL`)

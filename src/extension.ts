@@ -1,78 +1,92 @@
+//src/extension.ts
 import * as vscode from "vscode";
+import path from "path";
 import { LocalCache } from "./database";
 import { SemanticCodeIndexer } from "./SemanticCodeIndexer";
-import { createEmbeddingService } from "./services/embeddingFactory";
 import { ApexAdapter } from "./adapters/ApexAdapter";
 import { CodeIndexer } from "./CodeIndexer";
 import { ResultsProvider } from "./ResultsProvider";
 import { initParserForWorkspace } from "./services/parserService";
-import { registerSemanticSearchCommand } from "./commands/semanticSearchCommand";
 import { registerParseApexCommand } from "./commands/parseApexCommand";
 import { registerAskQuestionCommand } from "./commands/askQuestionCommand";
 import { registerParseWorkspaceCommand } from "./commands/parseWorkspaceCommand";
 import { registerFindReferencesCommand } from "./commands/findReferencesCommand";
+//import { MockEmbeddingService } from "./services/embeddings";
+//import { RustBinaryEmbeddingService } from "./services/RustBinaryEmbeddingService";
+import { HybridEmbeddingService } from "./services/HybridEmbeddingService";
 
-let cache: LocalCache | undefined;
-let codeIndexer: CodeIndexer | undefined;
-let resultsProvider: ResultsProvider | undefined;
+let cache: LocalCache;
+let codeIndexer: CodeIndexer;
+let semanticIndexer: SemanticCodeIndexer;
+let resultsProvider: ResultsProvider;
 let outputChannel: vscode.OutputChannel;
 
 export async function activate(context: vscode.ExtensionContext) {
   outputChannel = vscode.window.createOutputChannel("Kodelens-Debug");
   outputChannel.show(true);
-  outputChannel.appendLine("=== Kodelens Initialization ===");
+  outputChannel.appendLine("== Kodelens MVP Initialization ==");
 
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-  if (!workspaceRoot) {
-    vscode.window.showWarningMessage("Open a folder/workspace for Kodelens to function.");
-    return;
-  }
+  if (!workspaceRoot) {return;}
 
-  // config
-  const config = vscode.workspace.getConfiguration("kodelens");
-  const embeddingModel = config.get<string>("embeddingModel") || "mock";
-  const openAiApiKey = config.get<string>("openAiApiKey");
-  const googleApiKey = config.get<string>("googleApiKey");
-  const apiKey = embeddingModel === "openai" ? openAiApiKey : googleApiKey;
-
-  // single cache instance (globalStorage)
+  // Cache
   const dbPath = vscode.Uri.joinPath(context.globalStorageUri, "kodelens-cache.sqlite").fsPath;
-  outputChannel.appendLine(`Using DB Path: ${dbPath}`);
   cache = new LocalCache(dbPath);
-  cache.init();
+  await cache.init();
 
-  // embedding service, indexer, results provider
-  const embeddingService = await createEmbeddingService(embeddingModel, apiKey);
-  resultsProvider = new ResultsProvider();
-  vscode.window.createTreeView("kodelens-results", {
-  treeDataProvider: resultsProvider,
-  showCollapseAll: true,
-    });
-
-  const indexer = new SemanticCodeIndexer(workspaceRoot, context, cache, embeddingModel);
+  // Apex Adapter
   const apexAdapter = new ApexAdapter(context);
-  codeIndexer = new CodeIndexer(workspaceRoot, context, cache, apexAdapter, embeddingService);
+  await apexAdapter.init();
 
-  // initialize parser
-  try {
-    await initParserForWorkspace(workspaceRoot, context);
-    outputChannel.appendLine("✓ Parser initialized successfully");
-  } catch (err) {
-    outputChannel.appendLine(`FATAL: Parser init failed. Error: ${err}`);
-    return;
+  // Config
+  const config = vscode.workspace.getConfiguration("kodelens");
+  const modelChoice = config.get<string>("embeddingModel", "rust");
+  outputChannel.appendLine(`[Embedding] Using model: ${modelChoice}`);
+  const extensionRoot = context.extensionPath; // this is the absolute path to your extension
+  const modelsBasePath = path.join(extensionRoot, "dist", "models"); // or just extensionRoot if HybridEmbeddingService appends .cache/models
+  
+  // Embedding service
+  let embeddingService;
+  if (modelChoice === "rust") {
+    embeddingService = new HybridEmbeddingService(extensionRoot);
+  } else {
+    embeddingService = new HybridEmbeddingService(extensionRoot);
   }
 
-  // register commands (pass shared cache + other deps)
+  await embeddingService.init?.();
+  outputChannel.appendLine(`[Embedding] Initialized model: ${modelChoice}`);
+
+  // Results provider
+  resultsProvider = new ResultsProvider();
+  vscode.window.createTreeView("kodelens-results", { treeDataProvider: resultsProvider, showCollapseAll: true });
+
+  // Indexers
+
+  codeIndexer = new CodeIndexer(workspaceRoot, context, cache, apexAdapter, embeddingService);
+  semanticIndexer = new SemanticCodeIndexer(cache, apexAdapter, modelsBasePath);
+  await semanticIndexer.init();
+
+  // Parser
+  await initParserForWorkspace(workspaceRoot, context);
+
+  // Commands
   registerParseApexCommand(context, outputChannel, cache, workspaceRoot);
   registerAskQuestionCommand(context, outputChannel, cache, resultsProvider);
-  registerParseWorkspaceCommand(context, outputChannel, cache, workspaceRoot);
+  registerParseWorkspaceCommand(context, outputChannel, cache, semanticIndexer, workspaceRoot, apexAdapter);
   registerFindReferencesCommand(context, outputChannel, cache, codeIndexer, resultsProvider);
-  registerSemanticSearchCommand(context, outputChannel, cache);
 
+  // Expose test command
+  vscode.commands.registerCommand("kodelens.testWebviewEmbedding", async () => {
+    const text = "public class InvoiceProcessor { void processPayment() {} }";
+    const embedding = await embeddingService.generateEmbedding(text);
+    console.log("Embedding length:", embedding.length);
+    console.log("First 10 dims:", Array.from(embedding).slice(0, 10));
+    vscode.window.showInformationMessage("Embedding test complete. Check console.");
+  });
 
   context.subscriptions.push(outputChannel);
 }
 
 export function deactivate() {
-  try { cache?.close(); } catch {}
+  cache?.close();
 }

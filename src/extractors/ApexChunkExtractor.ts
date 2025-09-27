@@ -1,112 +1,71 @@
-// src/extractors/ApexChunkExtractor.ts
-import { CodeChunk } from "../types";
-import { generateHash } from "../utils";
 import { ApexAdapter } from "../adapters/ApexAdapter";
+import { CodeChunk } from "../types";
+import Parser from "web-tree-sitter";
 
 export class ApexChunkExtractor {
-    constructor(private apexAdapter: ApexAdapter) {}
-    public extractChunks(filePath: string, content: string): CodeChunk[] {
-        if (!this.apexAdapter) {
-        throw new Error("ApexAdapter not initialized");
-        }
+  constructor(private apexAdapter: ApexAdapter) {}
 
-        const tree = this.apexAdapter.parse(content);
-        if (!tree || !tree.rootNode) {
-        // fallback → whole-file chunk
-        return [
-            {
-            id: generateHash(filePath + content),
-            filePath,
-            text: content,
-            code: content,
-            name: "root",
-            type: "file",
-            hash: generateHash(content),
-            startLine: 1,
-            endLine: content.split("\n").length,
-            startPosition: { row: 1, column: 0 },
-            endPosition: { row: content.split("\n").length, column: 0 },
-            range: {
-                start: { row: 1, column: 0 },
-                end: { row: content.split("\n").length, column: 0 },
-            },
-            },
-        ];
-        }
+  /** 
+   * Extract code chunks from a Parser.Tree or SyntaxNode
+   * @param filePath relative path of the file
+   * @param treeOrNode Parser.Tree or Parser.SyntaxNode (root or subtree)
+   */
+  public extractChunks(
+    filePath: string,
+    treeOrNode: Parser.Tree | Parser.SyntaxNode
+  ): CodeChunk[] {
+    const chunks: CodeChunk[] = [];
+    const rootNode: Parser.SyntaxNode =
+      "rootNode" in treeOrNode ? treeOrNode.rootNode : treeOrNode;
 
-        const chunks: CodeChunk[] = [];
-        const sourceLines = content.split("\n");
+    const visitNode = (node: Parser.SyntaxNode | null) => {
+      if (!node) {return;}
 
-        const visitNode = (node: any) => {
-        let chunkType: string | null = null;
+      // Collect top-level classes and methods
+      if (["class_declaration", "method_declaration", "trigger_declaration"].includes(node.type)) {
+        chunks.push({
+          id: "",
+          hash: "",
+          filePath,
+          type: node.type,
+          name: node.type,
+          code: node.text,
+          text: node.text,
+          startLine: node.startPosition.row,
+          endLine: node.endPosition.row,
+          startPosition: node.startPosition,
+          endPosition: node.endPosition,
+          range: { start: node.startPosition, end: node.endPosition },
+        });
+      }
 
-        switch (node.type) {
-            case "class_declaration":
-            chunkType = "class";
-            break;
-            case "method_declaration":
-            chunkType = "method";
-            break;
-            case "constructor_declaration":
-            chunkType = "constructor";
-            break;
-            // you can add fields, triggers, or other node types later
-        }
+      // Some files can produce 0 AST nodes matching your extractor rules — we should gracefully 
+      // fallback and create at least one chunk representing the file.
+      // after you finish the AST traversal and have `chunks` array:
+if (chunks.length === 0) {
+  // use rootNode.text as a single chunk (whole file)
+  const fullText = rootNode?.text ?? "";
+  chunks.push({
+    id: "", hash: "", filePath,
+    type: "file",
+    name: filePath,
+    code: fullText,
+    text: fullText,
+    startLine: 0,
+    endLine: (fullText.match(/\n/g) || []).length,
+    startPosition: { row: 0, column: 0 },
+    endPosition: { row: (fullText.match(/\n/g) || []).length, column: 0 },
+    range: { start: { row: 0, column: 0 }, end: { row: (fullText.match(/\n/g) || []).length, column: 0 } }
+  });
+}
 
-        if (chunkType) {
-            const startLine = node.startPosition.row + 1;
-            const endLine = node.endPosition.row + 1;
-            const chunkText = sourceLines.slice(startLine - 1, endLine).join("\n");
+      for (let i = 0; i < node.childCount; i++) {
+        visitNode(node.child(i));
+      }
+    };
 
-            chunks.push({
-            id: generateHash(`${filePath}:${startLine}:${endLine}:${chunkType}`),
-            filePath,
-            text: chunkText,
-            code: chunkText,
-            name: node.type,
-            type: chunkType,
-            hash: generateHash(chunkText),
-            startLine,
-            endLine,
-            startPosition: node.startPosition,
-            endPosition: node.endPosition,
-            range: { start: node.startPosition, end: node.endPosition },
-            });
-        }
-
-        // recurse into children
-        if (node.children) {
-            for (const child of node.children) {
-            visitNode(child);
-            }
-        }
-        };
-
-        visitNode(tree.rootNode);
-
-        // fallback if nothing extracted
-        if (chunks.length === 0) {
-        return [
-            {
-            id: generateHash(filePath + content),
-            filePath,
-            text: content,
-            code: content,
-            name: "root",
-            type: "file",
-            hash: generateHash(content),
-            startLine: 1,
-            endLine: sourceLines.length,
-            startPosition: { row: 1, column: 0 },
-            endPosition: { row: sourceLines.length, column: 0 },
-            range: {
-                start: { row: 1, column: 0 },
-                end: { row: sourceLines.length, column: 0 },
-            },
-            },
-        ];
-        }
-
-        return chunks;
-    }
-    }
+    visitNode(rootNode);
+    console.info(`ApexChunkExtractor: extracted ${chunks.length} chunks from ${filePath}`);
+    return chunks;
+  }
+}

@@ -1,0 +1,3 @@
+[
+  { "id": "chunk0", "text": "public class InvoiceProcessor { void processPayment() {} }" }
+]

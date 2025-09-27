@@ -1,8 +1,5 @@
 // src/services/embeddingFactory.ts
 import { EmbeddingService, MockEmbeddingService } from "./embeddings";
-import { OpenAIEmbeddingService } from "./OpenAIEmbeddingService";
-import { GoogleGeminiEmbeddingService } from "./GoogleGeminiEmbeddingService";
-
 /**
  * Factory to create an EmbeddingService instance
  * @param choice "openai" | "google" | "mock" | "local-bge"
@@ -13,26 +10,11 @@ export async function createEmbeddingService(
   apiKey?: string
 ): Promise<EmbeddingService> {
   switch (choice.toLowerCase()) {
-    case "openai":
-      if (!apiKey) {throw new Error("OpenAI API key required");}
-      return new OpenAIEmbeddingService(apiKey);
-
-    case "google":
-      if (!apiKey) {throw new Error("Google Gemini API key required");}
-      return new GoogleGeminiEmbeddingService("models/embedding-001");
-
     case "mock":
       return new MockEmbeddingService();
 
-    case "local-bge":
-      // Lazy-load the local BGE embedding service so that dependencies
-      // are only required when explicitly chosen.
-      const { LocalBgeEmbeddingService } = await import(
-        "./LocalBgeEmbeddingService.js"
-      );
-      return new LocalBgeEmbeddingService();
-
     default:
-      throw new Error(`Unknown embedding model: ${choice}`);
+    console.warn(`[EmbeddingFactory] Unknown embedding model: ${choice}, falling back to 'mock'`);
+      return new MockEmbeddingService();
   }
 }

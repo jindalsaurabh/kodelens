@@ -1,0 +1,5 @@
+[
+  { "id": "chunk1", "text": "function add(a, b) { return a + b; }" },
+  { "id": "chunk2", "text": "class Sample { constructor() {} }" },
+  { "id": "chunk3", "text": "const x = 42; console.log(x);" }
+]

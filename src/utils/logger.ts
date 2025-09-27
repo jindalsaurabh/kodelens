@@ -1,23 +1,27 @@
-// -----------------------------------------------------------------------------
-// FILE: src/utils/logger.ts
-// Small logger using VS Code OutputChannel. Keeps logging centralized.
-
+//src/utils/logger.ts
 import * as vscode from 'vscode';
 
 const CHANNEL_NAME = 'KodeLens';
 let channel: vscode.OutputChannel | null = null;
 
-export function getOutputChannel() {
+function getOutputChannel() {
   if (!channel) {channel = vscode.window.createOutputChannel(CHANNEL_NAME);}
   return channel;
 }
 
-export function logInfo(msg: string) {
+function info(msg: string) {
   const ch = getOutputChannel();
   ch.appendLine(`[INFO] ${new Date().toISOString()} ${msg}`);
 }
 
-export function logError(msg: string) {
+function error(msg: string) {
   const ch = getOutputChannel();
   ch.appendLine(`[ERROR] ${new Date().toISOString()} ${msg}`);
 }
+
+function warn(msg: string) {
+  const ch = getOutputChannel();
+  ch.appendLine(`[WARN] ${new Date().toISOString()} ${msg}`);
+}
+
+export const logger = { info, error, warn };
