@@ -1,63 +1,51 @@
 // src/SemanticCodeIndexer.ts
-import * as fs from "fs";
-import * as path from "path";
+import fs from "fs";
+import crypto from "crypto";
+import { EmbeddingService } from "./services/embeddings";
 import { LocalCache } from "./database";
 import { ApexAdapter } from "./adapters/ApexAdapter";
 import { ApexChunkExtractor } from "./extractors/ApexChunkExtractor";
 import { CodeChunk } from "./types";
-import { HybridEmbeddingService } from "./services/HybridEmbeddingService";
 import { logger } from "./utils/logger";
 
-export class SemanticCodeIndexer {
-  private embeddingService: HybridEmbeddingService;
-  private apexAdapter: ApexAdapter;
-  private db: LocalCache;
-  private extractor: ApexChunkExtractor;
+let instanceCounter = 0;
 
-  /**
-   * @param db - instance of LocalCache
-   * @param apexAdapter - instance of ApexAdapter
-   * @param extensionBasePath - root path of extension/project, used for models
-   */
-  constructor(db: LocalCache, apexAdapter: ApexAdapter, extensionBasePath: string) {
+export class SemanticCodeIndexer {
+  private db: LocalCache;
+  private apexAdapter: ApexAdapter;
+  private extractor: ApexChunkExtractor;
+  private embeddingService: EmbeddingService;
+  private debug: boolean;
+  private instanceId: number;
+
+  constructor(
+    db: LocalCache,
+    apexAdapter: ApexAdapter,
+    extractor: ApexChunkExtractor,
+    embeddingService: EmbeddingService,
+    debug = false
+  ) {
     this.db = db;
     this.apexAdapter = apexAdapter;
-    this.extractor = new ApexChunkExtractor(apexAdapter);
+    this.extractor = extractor;
+    this.embeddingService = embeddingService;
+    this.debug = debug;
+    this.instanceId = ++instanceCounter;
 
-    // Initialize HybridEmbeddingService with the base path
-    this.embeddingService = new HybridEmbeddingService(extensionBasePath);
+    logger.info(
+      `[SemanticCodeIndexer] Created instance #${this.instanceId} with extractor=${extractor.constructor.name}`
+    );
   }
 
-  /** Initialize embedding service */
-  async init(): Promise<void> {
-    try {
-      logger.info("[SemanticCodeIndexer] Initializing embedding service...");
-      await this.embeddingService.init?.();
-      logger.info("✓ Embedding service initialized successfully");
-    } catch (error) {
-      logger.error(`[SemanticCodeIndexer] Failed to initialize embedding service: ${error}`);
-      throw error;
-    }
-  }
-
-  /** Generate embeddings for multiple texts */
-  async embedTexts(texts: string[]): Promise<Float32Array[]> {
-    try {
-      logger.info(`[SemanticCodeIndexer] Generating embeddings for ${texts.length} texts`);
-      return await this.embeddingService.generateEmbeddings(texts);
-    } catch (error) {
-      logger.error(`[SemanticCodeIndexer] Failed to generate embeddings: ${error}`);
-      throw error;
-    }
-  }
-
-  /** Index a single file */
+  /**
+   * Index a single file incrementally
+   */
   async indexFile(
     filePath: string,
     content?: string
   ): Promise<{ filePath: string; fileHash: string; chunkCount: number } | null> {
     try {
-      logger.info(`[SemanticCodeIndexer] Processing ${filePath}`);
+      logger.info(`[SemanticCodeIndexer #${this.instanceId}] Processing ${filePath}`);
 
       if (!fs.existsSync(filePath)) {
         logger.warn(`[SemanticCodeIndexer] File not found: ${filePath}`);
@@ -67,112 +55,64 @@ export class SemanticCodeIndexer {
       const fileContent = content ?? fs.readFileSync(filePath, "utf-8");
       const fileHash = this.generateFileHash(fileContent);
 
+      // Check if the file is already fully indexed
+      const stats = this.db.getChunkStatsForFile(filePath);
+      if (stats.total > 0) {
+        // Simple heuristic: skip if all chunks already have embeddings and fileHash matches
+        const firstChunk = this.db.getChunkById(`${filePath}:${fileHash}`);
+        if (firstChunk) {
+          logger.info(`[SemanticCodeIndexer] Skipping ${filePath}, already indexed and up-to-date`);
+          return null;
+        }
+      }
+
+      // Parse into AST
       const tree = this.apexAdapter.parse(fileContent);
-      const chunks: CodeChunk[] = this.extractor.extractChunks(filePath, tree.rootNode);
+
+      // Extract chunks (they already have unique id=filePath+chunkHash)
+      const chunks: CodeChunk[] = this.extractor.extractChunks(filePath, tree.rootNode, fileContent);
 
       if (!chunks.length) {
-        logger.info(`[SemanticCodeIndexer] No chunks found for ${filePath}`);
+        logger.info(`[SemanticCodeIndexer #${this.instanceId}] No chunks found for ${filePath}`);
         return null;
       }
 
-      const texts = chunks.map((c) => c.code || c.text || "").filter((t) => t.trim().length > 0);
+      if (this.debug) {
+        logger.info(`[SemanticCodeIndexer #${this.instanceId}] Extracted ${chunks.length} chunks`);
+        chunks.forEach((c, i) => {
+          const snippet = (c.code || c.text || "").slice(0, 80).replace(/\s+/g, " ");
+          logger.info(`  [chunk ${i}] "${snippet}"`);
+        });
+      }
+
+      const texts = chunks
+        .map((c) => c.code || c.text || "")
+        .filter((t) => t.trim().length > 0);
+
       if (texts.length === 0) {
-        logger.warn(`[SemanticCodeIndexer] No valid texts to embed for ${filePath}`);
+        logger.warn(`[SemanticCodeIndexer #${this.instanceId}] No valid texts to embed for ${filePath}`);
         return null;
       }
 
-      logger.info(`[SemanticCodeIndexer] Generating embeddings for ${texts.length} chunks`);
+      logger.info(`[SemanticCodeIndexer #${this.instanceId}] Generating embeddings for ${texts.length} chunks`);
       const embeddings = await this.embeddingService.generateEmbeddings(texts);
 
       if (embeddings.length !== texts.length) {
-        logger.error(`[SemanticCodeIndexer] Embedding count mismatch: expected ${texts.length}, got ${embeddings.length}`);
         throw new Error("Embedding generation failed - count mismatch");
       }
 
-      await this.db.insertChunksWithEmbeddings(
-        chunks.slice(0, embeddings.length),
-        filePath,
-        fileHash,
-        embeddings
-      );
+      // Bulk insert/update all chunks with embeddings
+      this.db.insertChunksWithEmbeddings(chunks, filePath, fileHash, embeddings);
 
-      logger.info(`[SemanticCodeIndexer] ✅ Indexed ${chunks.length} chunks for ${filePath}`);
+      logger.info(`[SemanticCodeIndexer #${this.instanceId}] ✅ Indexed ${chunks.length} chunks for ${filePath}`);
       return { filePath, fileHash, chunkCount: chunks.length };
     } catch (err) {
-      logger.error(`[SemanticCodeIndexer] ❌ Failed to index ${filePath}: ${err}`);
+      logger.error(`[SemanticCodeIndexer #${this.instanceId}] ❌ Failed to index ${filePath}: ${err}`);
       return null;
     }
   }
 
-  /** Batch index multiple files */
-  async indexFiles(filePaths: string[]): Promise<Array<{ filePath: string; fileHash: string; chunkCount: number } | null>> {
-    const results: Array<{ filePath: string; fileHash: string; chunkCount: number } | null> = [];
-    let totalChunks = 0;
-
-    logger.info(`[SemanticCodeIndexer] Starting batch indexing of ${filePaths.length} files`);
-
-    for (let i = 0; i < filePaths.length; i++) {
-      const filePath = filePaths[i];
-      try {
-        const result = await this.indexFile(filePath);
-        if (result) {totalChunks += result.chunkCount;}
-        results.push(result);
-
-        if (filePaths.length > 5 && (i + 1) % 5 === 0) {
-          logger.info(`[SemanticCodeIndexer] Progress: ${i + 1}/${filePaths.length} files processed`);
-        }
-
-        if (i < filePaths.length - 1) {await new Promise((resolve) => setTimeout(resolve, 10));}
-      } catch (error) {
-        logger.error(`[SemanticCodeIndexer] Error processing ${filePath}: ${error}`);
-        results.push(null);
-      }
-    }
-
-    const successCount = results.filter((r) => r !== null).length;
-    logger.info(`[SemanticCodeIndexer] ✅ Batch indexing complete: ${successCount}/${filePaths.length} files successful`);
-    logger.info(`[SemanticCodeIndexer] ✅ Total chunks indexed: ${totalChunks}`);
-
-    return results;
-  }
-
-  /** Simple search stub */
-  async search(query: string, limit: number = 10): Promise<Array<{ chunk: CodeChunk; similarity: number }>> {
-    try {
-      logger.info(`[SemanticCodeIndexer] Searching for: "${query.substring(0, 50)}..."`);
-      const queryEmbedding = await this.embeddingService.generateEmbedding(query);
-      logger.info(`[SemanticCodeIndexer] Search completed`);
-      return [];
-    } catch (error) {
-      logger.error(`[SemanticCodeIndexer] Search failed: ${error}`);
-      return [];
-    }
-  }
-
-  /** Return embedding dimensionality */
-  getEmbeddingDimensions(): number {
-    return this.embeddingService.dim();
-  }
-
-  /** Check if initialized */
-  isInitialized(): boolean {
-  return !!this.embeddingService?.dim && this.embeddingService.dim() > 0;
-}
-
-
-  /** Hash utility */
   private generateFileHash(content: string): string {
-    return require("crypto").createHash("sha256").update(content).digest("hex");
-  }
-
-  /** Dispose resources */
-  async dispose(): Promise<void> {
-    try {
-      logger.info("[SemanticCodeIndexer] Disposing resources...");
-      if (this.embeddingService.dispose) {await this.embeddingService.dispose();}
-      logger.info("[SemanticCodeIndexer] ✅ Resources disposed successfully");
-    } catch (error) {
-      logger.error(`[SemanticCodeIndexer] Error during disposal: ${error}`);
-    }
+    return crypto.createHash("sha256").update(content).digest("hex");
   }
 }

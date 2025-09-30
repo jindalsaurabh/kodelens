@@ -1,8 +1,0 @@
-engines:
-    flow:
-        disable_engine: true
-    eslint:
-        auto_discover_eslint_config: true
-        disable_javascript_base_config: true
-        disable_lwc_base_config: true
-        disable_typescript_base_config: true

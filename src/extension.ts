@@ -11,9 +11,8 @@ import { registerParseApexCommand } from "./commands/parseApexCommand";
 import { registerAskQuestionCommand } from "./commands/askQuestionCommand";
 import { registerParseWorkspaceCommand } from "./commands/parseWorkspaceCommand";
 import { registerFindReferencesCommand } from "./commands/findReferencesCommand";
-//import { MockEmbeddingService } from "./services/embeddings";
-//import { RustBinaryEmbeddingService } from "./services/RustBinaryEmbeddingService";
 import { HybridEmbeddingService } from "./services/HybridEmbeddingService";
+import { ApexChunkExtractor } from "./extractors/ApexChunkExtractor";
 
 let cache: LocalCache;
 let codeIndexer: CodeIndexer;
@@ -37,7 +36,7 @@ export async function activate(context: vscode.ExtensionContext) {
   // Apex Adapter
   const apexAdapter = new ApexAdapter(context);
   await apexAdapter.init();
-
+  const extractor = new ApexChunkExtractor(apexAdapter);
   // Config
   const config = vscode.workspace.getConfiguration("kodelens");
   const modelChoice = config.get<string>("embeddingModel", "rust");
@@ -45,6 +44,7 @@ export async function activate(context: vscode.ExtensionContext) {
   const extensionRoot = context.extensionPath; // this is the absolute path to your extension
   const modelsBasePath = path.join(extensionRoot, "dist", "models"); // or just extensionRoot if HybridEmbeddingService appends .cache/models
   
+  /*
   // Embedding service
   let embeddingService;
   if (modelChoice === "rust") {
@@ -53,7 +53,18 @@ export async function activate(context: vscode.ExtensionContext) {
     embeddingService = new HybridEmbeddingService(extensionRoot);
   }
 
-  await embeddingService.init?.();
+  if (embeddingService.init) {
+  await embeddingService.init();
+}
+*/
+// Initialize HybridEmbeddingService with packaged model
+//const embeddingService = new HybridEmbeddingService(extensionRoot);
+//await embeddingService.init();
+const embeddingService = new HybridEmbeddingService(context);
+await embeddingService.init();
+
+outputChannel.appendLine(`[Embedding] Initialized HybridEmbeddingService with bundled model`);
+
   outputChannel.appendLine(`[Embedding] Initialized model: ${modelChoice}`);
 
   // Results provider
@@ -63,8 +74,14 @@ export async function activate(context: vscode.ExtensionContext) {
   // Indexers
 
   codeIndexer = new CodeIndexer(workspaceRoot, context, cache, apexAdapter, embeddingService);
+/*
   semanticIndexer = new SemanticCodeIndexer(cache, apexAdapter, modelsBasePath);
   await semanticIndexer.init();
+*/  
+  // after creating embeddingService
+
+semanticIndexer = new SemanticCodeIndexer(cache, apexAdapter, extractor, embeddingService, true);
+
 
   // Parser
   await initParserForWorkspace(workspaceRoot, context);
@@ -75,14 +92,32 @@ export async function activate(context: vscode.ExtensionContext) {
   registerParseWorkspaceCommand(context, outputChannel, cache, semanticIndexer, workspaceRoot, apexAdapter);
   registerFindReferencesCommand(context, outputChannel, cache, codeIndexer, resultsProvider);
 
-  // Expose test command
-  vscode.commands.registerCommand("kodelens.testWebviewEmbedding", async () => {
-    const text = "public class InvoiceProcessor { void processPayment() {} }";
-    const embedding = await embeddingService.generateEmbedding(text);
-    console.log("Embedding length:", embedding.length);
-    console.log("First 10 dims:", Array.from(embedding).slice(0, 10));
-    vscode.window.showInformationMessage("Embedding test complete. Check console.");
-  });
+  // Add to your activate function
+vscode.commands.registerCommand("kodelens.testRustEmbedding", async () => {
+    const texts = [
+        "public class AccountService { }",
+        "public void calculateRevenue() { }", 
+        "trigger AccountTrigger on Account (before insert) { }"
+    ];
+    
+    try {
+        outputChannel.appendLine("🧪 Testing Rust embedding service...");
+        const embeddings = await embeddingService.generateEmbeddings(texts);
+        outputChannel.appendLine(`✅ Generated ${embeddings.length} embeddings`);
+        outputChannel.appendLine(`📊 Each embedding has ${embeddings[0].length} dimensions`);
+        
+        // Show first few values for verification
+        const firstEmbedding = Array.from(embeddings[0]).slice(0, 5);
+        outputChannel.appendLine(`🔢 Sample values: [${firstEmbedding.join(', ')}]`);
+        
+        vscode.window.showInformationMessage(
+            `✅ Rust embedding test: Generated ${embeddings.length} embeddings`
+        );
+    } catch (error) {
+        outputChannel.appendLine(`❌ Rust embedding test failed: ${error}`);
+        vscode.window.showErrorMessage(`Rust embedding test failed: ${error}`);
+    }
+});
 
   context.subscriptions.push(outputChannel);
 }

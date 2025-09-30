@@ -103,3 +103,7 @@ venv
 venv/*
 .venv
 .venv/*
+
+#models
+candle-model/
+assets/models/*

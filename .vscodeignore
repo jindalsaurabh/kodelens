@@ -47,6 +47,8 @@ tree-sitter-sfapex/**
 
 # Misc
 .DS_Store
+scripts/** 
+requirements.txt
 
 # Rust
 rust-engine/**
@@ -59,6 +61,11 @@ assets/**
 
 #python environment
 .venv
+
+#candle-engine
+candle-engine/**
+candle-model/*
+
 
 # Ignore everything by default
 #*

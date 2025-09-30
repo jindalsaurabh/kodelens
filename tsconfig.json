@@ -5,8 +5,9 @@
     "module": "Node16",
     "target": "ES2022",
     "lib": ["ES2022"],
-    "sourceMap": true,
+    "sourceMap": false,
     "rootDir": "src",
+    "outDir": "dist",
     "strict": true,
     "skipLibCheck": true,
     "types": ["jest", "node"],
@@ -23,6 +24,7 @@
     "node_modules",
     "dist",
     "out",
+    "**/*.js",
     "**/*.test.ts",
     "tree-sitter-sfapex",
     "tree-sitter-sfapex/**/*"

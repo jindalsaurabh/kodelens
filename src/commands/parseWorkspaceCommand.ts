@@ -37,11 +37,10 @@ export function registerParseWorkspaceCommand(
             "**/node_modules/**"
           );
           console.log(`[parseWorkspace] Found ${apexFiles.length} Apex files`);
-          outputChannel.appendLine(
-            `[parseWorkspace] Found ${apexFiles.length} Apex files`
-          );
+          outputChannel.appendLine(`[parseWorkspace] Found ${apexFiles.length} Apex files`);
 
-          let processedFiles = 0;
+          let newFilesProcessed = 0;
+          let skippedFiles = 0;
 
           for (let i = 0; i < apexFiles.length; i++) {
             if (token.isCancellationRequested) {
@@ -50,43 +49,31 @@ export function registerParseWorkspaceCommand(
             }
 
             const fileUri = apexFiles[i];
-            let totalProgress = 0;
             try {
-              /*
-              progress.report({
-                message: `Processing ${i + 1}/${apexFiles.length}`,
-                increment: (1 / apexFiles.length) * 100,
-              });
-              */
-              totalProgress += 1 / apexFiles.length * 100;
-              progress.report({ message: `Processing ${i+1}/${apexFiles.length}`, increment: totalProgress });
-
               const doc = await vscode.workspace.openTextDocument(fileUri);
               const sourceCode = doc.getText();
-              const fileHash = crypto
-                .createHash("sha256")
-                .update(sourceCode)
-                .digest("hex");
-                
-              outputChannel.appendLine(`[parseWorkspace] File hash: ${fileHash}`);  
-              outputChannel.appendLine(`[parseWorkspace] Parsing here ${fileUri.fsPath}`);
+              const fileHash = crypto.createHash("sha256").update(sourceCode).digest("hex");
 
-              // Log before calling indexFile
-              console.log(`[parseWorkspace] Indexing ${fileUri.fsPath}`);
+              const stats = cache.getChunkStatsForFile(fileUri.fsPath);
+              if (stats.total > 0 && stats.withEmbeddings > 0) {
+                // check existing hash to skip unchanged files
+                const row = cache.getChunkById(`${fileUri.fsPath}:${fileHash}`);
+                if (row) {
+                  skippedFiles++;
+                  outputChannel.appendLine(`[parseWorkspace] Skipped (up-to-date): ${fileUri.fsPath}`);
+                  continue;
+                }
+              }
+
+              outputChannel.appendLine(`[parseWorkspace] Parsing: ${fileUri.fsPath}`);
+
               const result = await semanticIndexer.indexFile(fileUri.fsPath, sourceCode);
 
               if (result) {
-                processedFiles++;
-                outputChannel.appendLine(
-                  `[parseWorkspace] Indexed ${fileUri.fsPath} → ${result.fileHash}`
-                );
-                console.log(
-                  `[parseWorkspace] Indexed ${fileUri.fsPath} → ${result.fileHash}`
-                );
+                newFilesProcessed++;
+                outputChannel.appendLine(`[parseWorkspace] Indexed: ${fileUri.fsPath} → ${result.fileHash}`);
               } else {
-                outputChannel.appendLine(
-                  `[parseWorkspace] Skipped ${fileUri.fsPath}, no chunks or embeddings`
-                );
+                outputChannel.appendLine(`[parseWorkspace] No chunks or embeddings: ${fileUri.fsPath}`);
               }
             } catch (err) {
               console.error(`[parseWorkspace] Error processing ${fileUri.fsPath}`, err);
@@ -95,9 +82,9 @@ export function registerParseWorkspaceCommand(
           }
 
           vscode.window.showInformationMessage(
-            `Workspace parsing complete. ${processedFiles} files processed.`
+            `Workspace parsing complete. ${newFilesProcessed} new files processed, ${skippedFiles} skipped.`
           );
-          console.log(`[parseWorkspace] Parsing complete. ${processedFiles} files processed`);
+          console.log(`[parseWorkspace] Parsing complete. ${newFilesProcessed} new files, ${skippedFiles} skipped.`);
         }
       );
     }

@@ -5,7 +5,7 @@
   "description": "Talk to your code",
   "version": "0.0.1",
   "engines": {
-    "vscode": "^1.104.0"
+    "vscode": "^1.104.2"
   },
   "categories": [
     "Other"
@@ -72,17 +72,18 @@
     ]
   },
   "scripts": {
-    "check-types": "tsc --noEmit",
-    "lint": "eslint src --ext .ts",
-    "compile": "npm run check-types && npm run lint && node esbuild.js --production",
-    "package": "npm run compile && npx vsce package",
-    "reinstall": "npm run compile && npm run package && code --uninstall-extension kodelens.kodelens && code --install-extension kodelens-0.0.1.vsix",
-    "build-apex-wasm": "cd tree-sitter-sfapex/apex && tree-sitter build --wasm && mkdir -p ../../media/apex && cp tree-sitter-apex.wasm ../../media/apex/",
-    "vscode:prepublish": "npm run compile",
-    "test": "jest",
-    "clean": "rm -rf dist",
-    "postinstall": "npx electron-rebuild -f -w better-sqlite3 --version 37.3.1"
-  },
+  "check-types": "tsc --noEmit",
+  "lint": "eslint src --ext .ts",
+  "compile": "npm run check-types && npm run lint && node esbuild.js --production",
+  "package": "npm run compile && npx vsce package",
+  "reinstall": "npm run compile && npm run package && code --uninstall-extension kodelens.kodelens && code --install-extension kodelens-0.0.1.vsix",
+  "build-apex-wasm": "cd tree-sitter-sfapex/apex && tree-sitter build --wasm && mkdir -p ../../media/apex && cp tree-sitter-apex.wasm ../../media/apex/",
+  "vscode:prepublish": "npm run compile",
+  "test": "jest",
+  "clean": "rm -rf dist",
+  "postinstall": "npx electron-rebuild -f -w better-sqlite3 --version 37.3.1",
+  "dev": "tsc -w -p ./"
+},
   "devDependencies": {
     "@esbuild/darwin-x64": "^0.25.10",
     "@types/better-sqlite3": "^7.6.13",
@@ -94,6 +95,7 @@
     "@typescript-eslint/eslint-plugin": "^8.39.0",
     "@typescript-eslint/parser": "^8.39.0",
     "@vscode/vsce": "^3.6.0",
+    "chokidar-cli": "^3.0.0",
     "electron-rebuild": "^3.2.9",
     "esbuild": "^0.25.10",
     "esbuild-plugin-copy": "^2.1.1",

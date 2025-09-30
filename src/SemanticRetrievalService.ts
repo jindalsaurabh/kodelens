@@ -20,7 +20,7 @@ export class SemanticRetrievalService {
   private embeddingService: HybridEmbeddingService;
   private cache: LocalCache;
 
-  constructor(cache: LocalCache, modelManager: ModelManager, fallbackPath: string) {
+  constructor(cache: LocalCache, modelManager: ModelManager, fallbackPath: any) {
     this.embeddingService = new HybridEmbeddingService(fallbackPath);
     this.cache = cache;
   }

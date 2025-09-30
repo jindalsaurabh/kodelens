@@ -1,36 +1,52 @@
+// src/extractors/ApexChunkExtractor.ts
 import { ApexAdapter } from "../adapters/ApexAdapter";
 import { CodeChunk } from "../types";
 import Parser from "web-tree-sitter";
+import crypto from "crypto";
 
 export class ApexChunkExtractor {
   constructor(private apexAdapter: ApexAdapter) {}
 
-  /** 
-   * Extract code chunks from a Parser.Tree or SyntaxNode
-   * @param filePath relative path of the file
-   * @param treeOrNode Parser.Tree or Parser.SyntaxNode (root or subtree)
-   */
   public extractChunks(
     filePath: string,
-    treeOrNode: Parser.Tree | Parser.SyntaxNode
+    treeOrNode: Parser.Tree | Parser.SyntaxNode,
+    fileContent?: string
   ): CodeChunk[] {
     const chunks: CodeChunk[] = [];
     const rootNode: Parser.SyntaxNode =
       "rootNode" in treeOrNode ? treeOrNode.rootNode : treeOrNode;
 
+    if (!rootNode) {
+      console.warn(`[ApexChunkExtractor] No root node found for ${filePath}`);
+    } else {
+      console.log(
+        `[ApexChunkExtractor] rootNode type=${rootNode.type}, childCount=${rootNode.childCount}, text length=${rootNode.text?.length}`
+      );
+    }
+
     const visitNode = (node: Parser.SyntaxNode | null) => {
       if (!node) {return;}
 
-      // Collect top-level classes and methods
-      if (["class_declaration", "method_declaration", "trigger_declaration"].includes(node.type)) {
+      if (
+        ["class_declaration", "method_declaration", "trigger_declaration"].includes(
+          node.type
+        )
+      ) {
+        const chunkText = node.text || "";
+        const chunkHash = crypto.createHash("sha256").update(chunkText).digest("hex");
+        const chunkId = crypto
+          .createHash("sha256")
+          .update(`${filePath}:${chunkHash}`)
+          .digest("hex");
+
         chunks.push({
-          id: "",
-          hash: "",
+          id: chunkId,
+          hash: chunkHash,
           filePath,
           type: node.type,
           name: node.type,
-          code: node.text,
-          text: node.text,
+          code: chunkText,
+          text: chunkText,
           startLine: node.startPosition.row,
           endLine: node.endPosition.row,
           startPosition: node.startPosition,
@@ -39,33 +55,54 @@ export class ApexChunkExtractor {
         });
       }
 
-      // Some files can produce 0 AST nodes matching your extractor rules — we should gracefully 
-      // fallback and create at least one chunk representing the file.
-      // after you finish the AST traversal and have `chunks` array:
-if (chunks.length === 0) {
-  // use rootNode.text as a single chunk (whole file)
-  const fullText = rootNode?.text ?? "";
-  chunks.push({
-    id: "", hash: "", filePath,
-    type: "file",
-    name: filePath,
-    code: fullText,
-    text: fullText,
-    startLine: 0,
-    endLine: (fullText.match(/\n/g) || []).length,
-    startPosition: { row: 0, column: 0 },
-    endPosition: { row: (fullText.match(/\n/g) || []).length, column: 0 },
-    range: { start: { row: 0, column: 0 }, end: { row: (fullText.match(/\n/g) || []).length, column: 0 } }
-  });
-}
-
       for (let i = 0; i < node.childCount; i++) {
         visitNode(node.child(i));
       }
     };
 
     visitNode(rootNode);
-    console.info(`ApexChunkExtractor: extracted ${chunks.length} chunks from ${filePath}`);
+
+    // fallback chunk
+    if (chunks.length === 0) {
+      const fallbackText = rootNode?.text || fileContent || "";
+      const chunkHash = crypto.createHash("sha256").update(fallbackText).digest("hex");
+      const chunkId = crypto
+        .createHash("sha256")
+        .update(`${filePath}:${chunkHash}`)
+        .digest("hex");
+
+      const lineCount = (fallbackText.match(/\n/g) || []).length;
+
+      chunks.push({
+        id: chunkId,
+        hash: chunkHash,
+        filePath,
+        type: "file",
+        name: filePath,
+        code: fallbackText,
+        text: fallbackText,
+        startLine: 0,
+        endLine: lineCount,
+        startPosition: { row: 0, column: 0 },
+        endPosition: { row: lineCount, column: 0 },
+        range: { start: { row: 0, column: 0 }, end: { row: lineCount, column: 0 } },
+      });
+
+      console.info(
+        `[ApexChunkExtractor] No AST matches, using fallback chunk for ${filePath}, length=${fallbackText.length}`
+      );
+    }
+
+    console.info(`[ApexChunkExtractor] Extracted ${chunks.length} chunk(s) from ${filePath}`);
+    chunks.forEach((c, i) =>
+      console.info(
+        `  [chunk ${i}] type=${c.type}, lines=${c.startLine}-${c.endLine}, preview="${c.code?.slice(
+          0,
+          50
+        )}..."`
+      )
+    );
+
     return chunks;
   }
 }

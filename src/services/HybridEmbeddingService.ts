@@ -1,86 +1,36 @@
 // src/services/HybridEmbeddingService.ts
-// src/services/HybridEmbeddingService.ts
 import { EmbeddingService } from "./embeddings";
 import { RustBinaryEmbeddingService } from "./RustBinaryEmbeddingService";
-import { ModelManager } from "../ModelManager";
-import * as path from "path";
-import * as fs from "fs";
+import * as vscode from 'vscode';
 
 export class HybridEmbeddingService implements EmbeddingService {
-  private rustService: RustBinaryEmbeddingService;
-  private activeModelPath: string;
-  private modelManager: ModelManager;
+    private rustService: RustBinaryEmbeddingService;
+    private context: vscode.ExtensionContext;
 
-  /**
-   * @param extensionBasePath - root folder of the extension/project
-   *   - downloaded models will go into extensionBasePath/.cache/models
-   *   - bundled model will be read from dist/models/modelA
-   */
-  constructor(extensionBasePath: string) {
-    const resolvedBase = path.resolve(extensionBasePath);
-
-    // Directory for downloaded models (Model B)
-    const cacheModelsPath = path.join(resolvedBase, ".cache", "models");
-    if (!fs.existsSync(cacheModelsPath)) {
-      fs.mkdirSync(cacheModelsPath, { recursive: true });
-      console.log(`[HybridEmbeddingService] Created cache models folder: ${cacheModelsPath}`);
+    constructor(context: vscode.ExtensionContext) {
+        this.context = context;
+        this.rustService = new RustBinaryEmbeddingService(context);
+        console.log(`[HybridEmbeddingService] Initialized with extension context`);
     }
 
-    // Directory for bundled Model A
-    const bundledModelsPath = path.join(resolvedBase, "dist", "models", "modelA", "embedding_model.pt");
-    if (!fs.existsSync(bundledModelsPath)) {
-      console.warn(`[HybridEmbeddingService] Bundled model not found at: ${bundledModelsPath}`);
+    async init(): Promise<void> {
+        await this.rustService.init();
+        console.log(`[HybridEmbeddingService] Rust backend initialized`);        
     }
 
-    this.modelManager = new ModelManager(cacheModelsPath);
-    this.activeModelPath = bundledModelsPath; // default to Model A
-
-    // Initialize Rust service
-    this.rustService = new RustBinaryEmbeddingService();
-    console.log(`[HybridEmbeddingService] Ready with default model: ${this.activeModelPath}`);
-  }
-
-  async init(): Promise<void> {
-    // Initialize Rust binary
-    try {
-      await this.rustService.init();
-    } catch (err: any) {
-      throw new Error(`[HybridEmbeddingService] Rust binary failed to initialize: ${err?.message ?? err}`);
+    dim(): number {
+        return this.rustService.dim();
     }
 
-    // Check for downloaded Model B
-    try {
-      const downloaded = await this.modelManager.getOrDownloadModel();
-      if (downloaded) {
-        console.log(`[HybridEmbeddingService] Using downloaded model: ${downloaded.id} (dim=${downloaded.dimension})`);
-        this.activeModelPath = downloaded.path;
-      } else {
-        console.log(`[HybridEmbeddingService] No downloaded model found, sticking with bundled model`);
-      }
-    } catch (err: any) {
-      console.error(`[HybridEmbeddingService] Error while checking downloaded model: ${err?.message ?? err}`);
-      console.log(`[HybridEmbeddingService] Falling back to bundled model`);
-      this.activeModelPath = path.join(process.cwd(), "dist", "models", "modelA", "embedding_model.pt");
+    async generateEmbedding(text: string): Promise<Float32Array> {
+        return this.rustService.generateEmbedding(text);
     }
 
-    // Inform Rust service about model path
-    console.log(`[HybridEmbeddingService] Active model path set: ${this.activeModelPath}`);
-    this.rustService.setModelPath(this.activeModelPath);
-  }
+    async generateEmbeddings(texts: string[]): Promise<Float32Array[]> {
+        return this.rustService.generateEmbeddings(texts);
+    }
 
-  dim(): number {
-    return this.rustService.dim();
-  }
-
-  async generateEmbedding(text: string): Promise<Float32Array> {
-    return this.rustService.generateEmbedding(text);
-  }
-
-  async generateEmbeddings(texts: string[]): Promise<Float32Array[]> {
-    return this.rustService.generateEmbeddings(texts);
-  }
-
-  async dispose(): Promise<void> {
-    await this.rustService.dispose();
-  }
+    async dispose(): Promise<void> {
+        await this.rustService.dispose();
+    }
 }

@@ -3,3 +3,4 @@ trigger SampleTrigger on Account (before insert) {
         acc.Description = 'Created by trigger';
     }
 }
+    

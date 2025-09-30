@@ -1,15 +1,11 @@
 // src/services/embeddings.ts
 import crypto from 'crypto';
 export interface EmbeddingService {
-  /** Returns the dimensionality of the embedding vectors */
   dim(): number;
-  /** Generate a single embedding */
   generateEmbedding(text: string): Promise<Float32Array>;
-  /** Generate embeddings for multiple inputs */
   generateEmbeddings(texts: string[]): Promise<Float32Array[]>;
   init?(): Promise<void>;
   batchSize?: number;
-  /** Optional dispose hook to free resources */
   dispose?(): Promise<void>;
 }
 

@@ -133,6 +133,20 @@ export class CodeIndexer {
       const normalized = content; // replace with normalizeCode(content) if needed
       const fileHash = generateHash(normalized);
 
+      // Convert to workspace-relative path
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    let relativePath = filePath;
+
+    if (workspaceFolders) {
+      for (const folder of workspaceFolders) {
+        const root = folder.uri.fsPath;
+        if (filePath.startsWith(root)) {
+          relativePath = path.relative(root, filePath);
+          break;
+        }
+      }
+    }
+
       const tree = this.apexAdapter.parse(normalized);
       const chunks = this.extractor.extractChunks(filePath, tree.rootNode);
 

@@ -1,9 +1,0 @@
-# Cargo.toml
-[package]
-name = "rust_embed"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-tch = "0.14.0"
-anyhow = "1.0"
