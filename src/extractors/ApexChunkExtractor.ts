@@ -1,5 +1,4 @@
 // src/extractors/ApexChunkExtractor.ts
-// src/extractors/ApexChunkExtractor.ts
 import { ApexAdapter } from "../adapters/ApexAdapter";
 import { CodeChunk } from "../types";
 import Parser from "web-tree-sitter";
@@ -27,6 +26,7 @@ export class ApexChunkExtractor {
     treeOrNode: Parser.Tree | Parser.SyntaxNode,
     fileContent?: string
   ): CodeChunk[] {
+    console.log("🔍 DEBUG: Contextual chunking ACTIVE - " + new Date().toISOString());
     // Performance & safety check for large files
     if (fileContent && fileContent.length > this.MAX_FILE_SIZE) {
       console.warn(`[ApexChunkExtractor] Large file detected: ${filePath} (${fileContent.length} bytes). Processing may be slow.`);
@@ -96,6 +96,14 @@ export class ApexChunkExtractor {
     const chunkId = generateChunkId(filePath, chunkText);
     const chunkName = this.extractChunkName(node, type);
 
+    // ✅ ADD CONTEXT: Include class name for methods
+    let contextualText = chunkText;
+    if (type === 'method_declaration' || type === 'property_declaration') {
+        const className = this.findParentClassName(node);
+        console.log(`🔍 DEBUG: Adding context to method: ${chunkName} → ${className}.${chunkName}`);
+        contextualText = `// ${className}.${chunkName}\n${chunkText}`;
+    }
+
     return {
       id: chunkId,
       hash: chunkHash,
@@ -103,7 +111,7 @@ export class ApexChunkExtractor {
       type,
       name: chunkName,
       code: chunkText,
-      text: chunkText,
+      text: contextualText,
       startLine: node.startPosition.row,
       endLine: node.endPosition.row,
       startPosition: node.startPosition,
@@ -244,4 +252,18 @@ export class ApexChunkExtractor {
   private getFileName(filePath: string): string {
     return filePath.split(/[/\\]/).pop() || filePath;
   }
+
+private findParentClassName(node: Parser.SyntaxNode): string {
+    let currentNode = node.parent;
+    
+    while (currentNode) {
+        if (currentNode.type === 'class_declaration') {
+            const classNameNode = currentNode.childForFieldName('name');
+            return classNameNode?.text || 'UnknownClass';
+        }
+        currentNode = currentNode.parent;
+    }
+    
+    return 'UnknownClass';
+}
 }

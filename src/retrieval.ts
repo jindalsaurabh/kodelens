@@ -1,7 +1,7 @@
 //src/retrieval.ts
 import { LocalCache } from './database';
 import { CodeChunk } from './types';
-import { EmbeddingService } from './services/embeddings';
+import { expandQuery } from "./utils/queryExpansion";
 import { HybridEmbeddingService } from './services/HybridEmbeddingService';
 
 export interface SearchResult {
@@ -21,11 +21,12 @@ export async function findRelevantChunks(
     embeddingService: HybridEmbeddingService,
     limit: number = 10
 ): Promise<SearchResult[]> {
-    console.log(`[retrieval] Searching for: "${question}"`);
+    const expandedQuery = expandQuery(question);    
+    console.log(`[retrieval] Original: "${question}" → Expanded: "${expandedQuery}"`);
     
     try {
         // Try semantic search first
-        const semanticResults = await semanticSearch(question, cache, embeddingService, limit * 2);
+        const semanticResults = await semanticSearch(expandedQuery, cache, embeddingService, limit * 2);
         
         // If we have good semantic results, use them
         if (semanticResults.length > 0 && semanticResults[0].score > 0.3) {
@@ -202,27 +203,38 @@ function calculateRelevanceScore(chunk: CodeChunk, keywords: string[]): number {
     const chunkText = chunk.text?.toLowerCase() || '';
     let score = 0;
     
-    // Base score: number of keyword matches
+    // 1. Base keyword matches
     const matches = keywords.filter(keyword => chunkText.includes(keyword)).length;
     score += matches * 10;
     
-    // Bonus for exact matches
+    // 2. Type-based weights (REPLACES the old manual type checking)
+    const typeWeights: Record<string, number> = {
+        'class_declaration': 35,        // 20 base + 15 from old logic
+        'interface_declaration': 33,    // 18 base + 15 from old logic  
+        'method_declaration': 30,       // 15 base + 15 from old logic
+        'trigger_declaration': 25,      // 15 base + 10 from old logic
+        'constructor_declaration': 27,  // 12 base + 15 from old logic
+        'property_declaration': 10,
+        'file': 5,
+        'file_segment': 3
+    };
+    
+    score += typeWeights[chunk.type || 'file'] || 5;
+
+    // 3. Bonus for meaningful names
+    if (chunk.name && !chunk.name.includes('Unknown')) {
+        score += 10;
+    }
+    
+    // 4. Bonus for exact matches (keep this separate)
     keywords.forEach(keyword => {
         if (chunkText === keyword || chunkText.includes(` ${keyword} `)) {
             score += 5;
         }
     });
     
-    // Bonus for method/class declarations (usually more important)
-    if (chunk.type === 'method_declaration' || chunk.type === 'class_declaration') {
-        score += 15;
-    } else if (chunk.type === 'trigger_declaration') {
-        score += 10;
-    }
-    
     return score;
 }
-
 /**
  * ---------------------------
  * Safe ID Helper Function

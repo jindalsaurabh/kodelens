@@ -104,7 +104,21 @@ export class LocalCache implements ILocalCache {
         )
         .run({ version: String(this.SCHEMA_VERSION) });
     }
-  }
+
+    // ✅ ADD CHUNKING VERSION CHECK
+    const CHUNKING_VERSION = "2.1"; // Increment this when chunking logic changes
+    const chunkingVersionRow = this.db
+      .prepare("SELECT value FROM metadata WHERE key = 'chunking_version'")
+      .get() as { value: string } | undefined;
+
+    if (!chunkingVersionRow || chunkingVersionRow.value !== CHUNKING_VERSION) {
+      console.log(`[Database] Chunking strategy updated (v${CHUNKING_VERSION}), clearing old embeddings...`);
+      this.db.exec("DELETE FROM code_chunks"); // Clear all old chunks
+      this.db
+        .prepare("INSERT OR REPLACE INTO metadata (key, value) VALUES ('chunking_version', ?)")
+        .run(CHUNKING_VERSION);
+    }
+}
 
   /** ========== Basic Inserts ========== */
 
@@ -400,7 +414,7 @@ findChunksHybrid(query: string, queryEmbedding: Float32Array, limit: number = 10
             seen.add(chunk.id);
             combined.push({ 
                 chunk, 
-                similarity: 0.3, // Base score for keyword matches
+                similarity: 0.5, // Base score for keyword matches
                 keywordMatch: true 
             });
         }
