@@ -23,7 +23,7 @@ let outputChannel: vscode.OutputChannel;
 export async function activate(context: vscode.ExtensionContext) {
   outputChannel = vscode.window.createOutputChannel("Kodelens-Debug");
   outputChannel.show(true);
-  outputChannel.appendLine("== Kodelens MVP Initialization ==");
+  outputChannel.appendLine("== Kodelens MVP Initialization123 ==");
 
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   if (!workspaceRoot) {return;}
@@ -88,9 +88,9 @@ semanticIndexer = new SemanticCodeIndexer(cache, apexAdapter, extractor, embeddi
 
   // Commands
   registerParseApexCommand(context, outputChannel, cache, workspaceRoot);
-  registerAskQuestionCommand(context, outputChannel, cache, resultsProvider);
+  registerAskQuestionCommand(context, outputChannel, cache, resultsProvider, embeddingService);
   registerParseWorkspaceCommand(context, outputChannel, cache, semanticIndexer, workspaceRoot, apexAdapter);
-  registerFindReferencesCommand(context, outputChannel, cache, codeIndexer, resultsProvider);
+  registerFindReferencesCommand(context, outputChannel, cache, codeIndexer, resultsProvider, embeddingService);
 
   // Add to your activate function
 vscode.commands.registerCommand("kodelens.testRustEmbedding", async () => {
@@ -100,6 +100,7 @@ vscode.commands.registerCommand("kodelens.testRustEmbedding", async () => {
         "trigger AccountTrigger on Account (before insert) { }"
     ];
     
+    /*
     try {
         outputChannel.appendLine("🧪 Testing Rust embedding service...");
         const embeddings = await embeddingService.generateEmbeddings(texts);
@@ -117,7 +118,8 @@ vscode.commands.registerCommand("kodelens.testRustEmbedding", async () => {
         outputChannel.appendLine(`❌ Rust embedding test failed: ${error}`);
         vscode.window.showErrorMessage(`Rust embedding test failed: ${error}`);
     }
-});
+*/
+    });
 
   context.subscriptions.push(outputChannel);
 }

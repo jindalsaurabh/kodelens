@@ -347,6 +347,70 @@ export class LocalCache implements ILocalCache {
     return rows.map((r) => this.mapRowToChunk(r));
   }
 
+  // Add to LocalCache class in database.ts
+
+/**
+ * Find chunks by semantic similarity to a query embedding
+ */
+findSimilarChunks(queryEmbedding: Float32Array, limit: number = 10): { chunk: CodeChunk; similarity: number }[] {
+    const allEmbeddings = this.getAllEmbeddings();
+    const results: { chunk: CodeChunk; similarity: number }[] = [];
+
+    for (const { id, embedding } of allEmbeddings) {
+        const similarity = this.cosineSimilarity(queryEmbedding, embedding);
+        const chunk = this.getChunkById(id);
+        
+        if (chunk) {
+            results.push({ chunk, similarity });
+        }
+    }
+
+    // Sort by similarity (descending) and return top results
+    return results
+        .sort((a, b) => b.similarity - a.similarity)
+        .slice(0, limit);
+}
+
+/**
+ * Hybrid search: semantic + keyword matching
+ */
+findChunksHybrid(query: string, queryEmbedding: Float32Array, limit: number = 10): { chunk: CodeChunk; similarity: number; keywordMatch: boolean }[] {
+    // Get semantic results
+    const semanticResults = this.findSimilarChunks(queryEmbedding, limit * 2);
+    
+    // Get keyword results
+    const keywords = query.toLowerCase().split(/\s+/).filter(k => k.length > 2);
+    const keywordResults = keywords.length > 0 ? this.findChunksByKeywords(keywords) : [];
+    
+    // Combine and deduplicate
+    const seen = new Set<string>();
+    const combined: { chunk: CodeChunk; similarity: number; keywordMatch: boolean }[] = [];
+    
+    // Add semantic results first
+    semanticResults.forEach(({ chunk, similarity }) => {
+        if (!seen.has(chunk.id)) {
+            seen.add(chunk.id);
+            combined.push({ chunk, similarity, keywordMatch: false });
+        }
+    });
+    
+    // Add keyword results with lower similarity score
+    keywordResults.forEach(chunk => {
+        if (!seen.has(chunk.id)) {
+            seen.add(chunk.id);
+            combined.push({ 
+                chunk, 
+                similarity: 0.3, // Base score for keyword matches
+                keywordMatch: true 
+            });
+        }
+    });
+    
+    return combined
+        .sort((a, b) => b.similarity - a.similarity)
+        .slice(0, limit);
+}
+
   close(): void {
     this.db.close();
   }
@@ -372,4 +436,23 @@ export class LocalCache implements ILocalCache {
       range,
     } as CodeChunk;
   }
+
+  /**
+ * Cosine similarity calculation
+ */
+private cosineSimilarity(a: Float32Array, b: Float32Array): number {
+    let dotProduct = 0;
+    let normA = 0;
+    let normB = 0;
+
+    for (let i = 0; i < a.length; i++) {
+        dotProduct += a[i] * b[i];
+        normA += a[i] * a[i];
+        normB += b[i] * b[i];
+    }
+
+    if (normA === 0 || normB === 0) {return 0;}
+    return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
 }

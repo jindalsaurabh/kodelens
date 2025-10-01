@@ -9,7 +9,7 @@ export interface SimpleRange {
   end: Point;
 }
 export interface CodeChunk {
-  id?: string;
+  id: string;
   hash?: string;
   filePath: string;
   type?: string;
