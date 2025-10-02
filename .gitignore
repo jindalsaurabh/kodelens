@@ -13,9 +13,6 @@ node_modules
 .env.production.local
 .env.*.local
 
-# Testing
-coverage
-
 # Turbo
 .turbo
 
@@ -55,9 +52,6 @@ Thumbs.db
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
-
-# testing
-/coverage
 
 # next.js
 /.next/
@@ -108,6 +102,11 @@ venv/*
 candle-model/
 assets/models/*
 
-#test Files
+#testing and test Files
 test/*
 test/SampleFiles/** 
+test/SampleFiles/* 
+/coverage
+
+#extension files
+*.vsix

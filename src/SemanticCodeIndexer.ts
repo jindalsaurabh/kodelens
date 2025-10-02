@@ -1,12 +1,13 @@
 // src/SemanticCodeIndexer.ts
 import fs from "fs";
-import crypto from "crypto";
+import * as path from "path"; // ✅ Added missing import
 import { EmbeddingService } from "./services/embeddings";
 import { LocalCache } from "./database";
 import { ApexAdapter } from "./adapters/ApexAdapter";
 import { ApexChunkExtractor } from "./extractors/ApexChunkExtractor";
 import { CodeChunk } from "./types";
 import { logger } from "./utils/logger";
+import { generateHash } from "./utils";
 
 let instanceCounter = 0;
 
@@ -53,7 +54,7 @@ export class SemanticCodeIndexer {
       }
 
       const fileContent = content ?? fs.readFileSync(filePath, "utf-8");
-      const fileHash = this.generateFileHash(fileContent);
+      const fileHash = generateHash(fileContent);
 
       // Check if the file is already fully indexed
       const stats = this.db.getChunkStatsForFile(filePath);
@@ -112,7 +113,117 @@ export class SemanticCodeIndexer {
     }
   }
 
-  private generateFileHash(content: string): string {
-    return crypto.createHash("sha256").update(content).digest("hex");
+  // ✅ Fixed: Use existing methods and properties
+  private async extractChunks(filePath: string, sourceCode?: string): Promise<CodeChunk[]> {
+    if (!sourceCode) {
+      sourceCode = await fs.promises.readFile(filePath, 'utf8');
+    }
+    
+    // ✅ Fixed: Use existing parse method, not parseApex
+    const tree = this.apexAdapter.parse(sourceCode);
+    
+    // ✅ Fixed: Use existing extractor property, not chunkExtractor
+    return this.extractor.extractChunks(filePath, tree.rootNode, sourceCode);
+  }
+
+  private async storeChunksWithEmbeddings(
+    filePaths: (string | any)[], // ✅ Allow both string and vscode.Uri
+    chunks: CodeChunk[], 
+    embeddings: Float32Array[]
+  ): Promise<void> {
+    // Group chunks by file path for storage
+    const chunksByFile = new Map<string, CodeChunk[]>();
+    const embeddingsByFile = new Map<string, Float32Array[]>();
+    
+    chunks.forEach((chunk, index) => {
+      const filePath = chunk.filePath;
+      if (!chunksByFile.has(filePath)) {
+        chunksByFile.set(filePath, []);
+        embeddingsByFile.set(filePath, []);
+      }
+      chunksByFile.get(filePath)!.push(chunk);
+      embeddingsByFile.get(filePath)!.push(embeddings[index]);
+    });
+    
+    // Store chunks for each file
+    for (const [filePath, fileChunks] of chunksByFile) {
+      const fileEmbeddings = embeddingsByFile.get(filePath)!;
+      const fileHash = generateHash(await fs.promises.readFile(filePath, 'utf8'));
+      
+      // ✅ Fixed: Use existing db property, not cache
+      await this.db.insertChunksWithEmbeddings(
+        fileChunks, 
+        filePath, 
+        fileHash, 
+        fileEmbeddings
+      );
+    }
+  }
+
+  async indexFilesBatch(filePaths: (string | any)[], batchSize: number = 5): Promise<void> {
+    const allChunks: CodeChunk[] = [];
+    
+    // Phase 1: Extract chunks from all files in batch
+    for (const fileUri of filePaths) {
+      try {
+        // ✅ Fixed: Handle vscode.Uri vs string properly
+        const filePath = typeof fileUri === 'string' ? fileUri : fileUri.fsPath;
+        const sourceCode = await fs.promises.readFile(filePath, 'utf8');
+        const chunks = await this.extractChunks(filePath, sourceCode);
+        allChunks.push(...chunks);
+        
+        // ✅ Fixed: Use logger instead of console, path is now imported
+        logger.info(`[SemanticCodeIndexer] Extracted ${chunks.length} chunks from ${path.basename(filePath)}`);
+      } catch (error) {
+        // ✅ Fixed: filePath is now properly defined in scope
+        const filePath = typeof fileUri === 'string' ? fileUri : fileUri.fsPath;
+        logger.error(`[SemanticCodeIndexer] Failed to extract chunks from ${filePath}:`);
+      }
+    }
+    
+    if (allChunks.length === 0) {
+      logger.info(`[SemanticCodeIndexer] No chunks extracted from batch of ${filePaths.length} files`);
+      return;
+    }
+    
+    // Phase 2: Generate embeddings for all chunks in batch
+    const texts = allChunks.map(c => c.text);
+    logger.info(`[SemanticCodeIndexer] Generating embeddings for ${texts.length} chunks...`);
+    
+    const embeddings = await this.embeddingService.generateEmbeddings(texts);
+    
+    // Phase 3: Store all chunks with embeddings
+    await this.storeChunksWithEmbeddings(filePaths, allChunks, embeddings);
+    
+    logger.info(`[SemanticCodeIndexer] Successfully processed batch: ${allChunks.length} chunks from ${filePaths.length} files`);
+  }
+
+  async indexFilesParallel(filePaths: (string | any)[], batchSize: number = 5, concurrency: number = 3): Promise<void> {
+    const batches: (string | any)[][] = [];
+    
+    // Create batches
+    for (let i = 0; i < filePaths.length; i += batchSize) {
+      batches.push(filePaths.slice(i, i + batchSize));
+    }
+    
+    // Process batches with limited concurrency
+    for (let i = 0; i < batches.length; i += concurrency) {
+      const currentBatches = batches.slice(i, i + concurrency);
+      
+      logger.info(`[SemanticCodeIndexer] Processing batches ${i + 1}-${i + currentBatches.length} of ${batches.length}`);
+      
+      // Process batches in parallel
+      await Promise.allSettled(
+        currentBatches.map((batch, batchIndex) => 
+          this.indexFilesBatch(batch).catch(error => {
+            logger.error(`[SemanticCodeIndexer] Batch ${i + batchIndex + 1} failed:`);
+            throw error;
+          })
+        )
+      );
+      
+      // Optional: Add small delay to prevent resource exhaustion
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
   }
 }

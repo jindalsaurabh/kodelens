@@ -3,4 +3,3 @@ public with sharing class SampleClass {
         System.debug('Hello, ' + name + '!');
     }
 }
-

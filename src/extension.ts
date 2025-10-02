@@ -13,6 +13,7 @@ import { registerParseWorkspaceCommand } from "./commands/parseWorkspaceCommand"
 import { registerFindReferencesCommand } from "./commands/findReferencesCommand";
 import { HybridEmbeddingService } from "./services/HybridEmbeddingService";
 import { ApexChunkExtractor } from "./extractors/ApexChunkExtractor";
+import { ProgressTracker } from './utils/ProgressTracker';
 
 let cache: LocalCache;
 let codeIndexer: CodeIndexer;
@@ -25,6 +26,23 @@ export async function activate(context: vscode.ExtensionContext) {
   outputChannel.show(true);
   outputChannel.appendLine("== Kodelens MVP Initialization123 ==");
 
+// In your extension.ts activate function
+    const progressTracker = new ProgressTracker(context);
+    const incompleteProgress = await progressTracker.loadProgress();
+    
+    if (incompleteProgress && incompleteProgress.status === 'paused') {
+        setTimeout(() => { // Wait a bit for VS Code to fully load
+            vscode.window.showInformationMessage(
+                `Kodelens: Previous indexing was interrupted (${incompleteProgress.processedFiles.length}/${incompleteProgress.totalFiles} files). Would you like to resume?`,
+                'Resume Now', 'Resume Later', 'Cancel'
+            ).then(choice => {
+                if (choice === 'Resume Now') {
+                    vscode.commands.executeCommand('kodelens.parseWorkspace');
+                }
+            });
+        }, 3000);
+    }
+  
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   if (!workspaceRoot) {return;}
 
@@ -32,7 +50,6 @@ export async function activate(context: vscode.ExtensionContext) {
   const dbPath = vscode.Uri.joinPath(context.globalStorageUri, "kodelens-cache.sqlite").fsPath;
   cache = new LocalCache(dbPath);
   await cache.init();
-
   // Apex Adapter
   const apexAdapter = new ApexAdapter(context);
   await apexAdapter.init();
@@ -43,28 +60,9 @@ export async function activate(context: vscode.ExtensionContext) {
   outputChannel.appendLine(`[Embedding] Using model: ${modelChoice}`);
   const extensionRoot = context.extensionPath; // this is the absolute path to your extension
   const modelsBasePath = path.join(extensionRoot, "dist", "models"); // or just extensionRoot if HybridEmbeddingService appends .cache/models
-  
-  /*
-  // Embedding service
-  let embeddingService;
-  if (modelChoice === "rust") {
-    embeddingService = new HybridEmbeddingService(extensionRoot);
-  } else {
-    embeddingService = new HybridEmbeddingService(extensionRoot);
-  }
 
-  if (embeddingService.init) {
+  const embeddingService = new HybridEmbeddingService(context);
   await embeddingService.init();
-}
-*/
-// Initialize HybridEmbeddingService with packaged model
-//const embeddingService = new HybridEmbeddingService(extensionRoot);
-//await embeddingService.init();
-const embeddingService = new HybridEmbeddingService(context);
-await embeddingService.init();
-
-outputChannel.appendLine(`[Embedding] Initialized HybridEmbeddingService with bundled model`);
-
   outputChannel.appendLine(`[Embedding] Initialized model: ${modelChoice}`);
 
   // Results provider
@@ -72,16 +70,9 @@ outputChannel.appendLine(`[Embedding] Initialized HybridEmbeddingService with bu
   vscode.window.createTreeView("kodelens-results", { treeDataProvider: resultsProvider, showCollapseAll: true });
 
   // Indexers
-
   codeIndexer = new CodeIndexer(workspaceRoot, context, cache, apexAdapter, embeddingService);
-/*
-  semanticIndexer = new SemanticCodeIndexer(cache, apexAdapter, modelsBasePath);
-  await semanticIndexer.init();
-*/  
   // after creating embeddingService
-
-semanticIndexer = new SemanticCodeIndexer(cache, apexAdapter, extractor, embeddingService, true);
-
+  semanticIndexer = new SemanticCodeIndexer(cache, apexAdapter, extractor, embeddingService, true);
 
   // Parser
   await initParserForWorkspace(workspaceRoot, context);
@@ -91,36 +82,6 @@ semanticIndexer = new SemanticCodeIndexer(cache, apexAdapter, extractor, embeddi
   registerAskQuestionCommand(context, outputChannel, cache, resultsProvider, embeddingService);
   registerParseWorkspaceCommand(context, outputChannel, cache, semanticIndexer, workspaceRoot, apexAdapter);
   registerFindReferencesCommand(context, outputChannel, cache, codeIndexer, resultsProvider, embeddingService);
-
-  // Add to your activate function
-vscode.commands.registerCommand("kodelens.testRustEmbedding", async () => {
-    const texts = [
-        "public class AccountService { }",
-        "public void calculateRevenue() { }", 
-        "trigger AccountTrigger on Account (before insert) { }"
-    ];
-    
-    /*
-    try {
-        outputChannel.appendLine("🧪 Testing Rust embedding service...");
-        const embeddings = await embeddingService.generateEmbeddings(texts);
-        outputChannel.appendLine(`✅ Generated ${embeddings.length} embeddings`);
-        outputChannel.appendLine(`📊 Each embedding has ${embeddings[0].length} dimensions`);
-        
-        // Show first few values for verification
-        const firstEmbedding = Array.from(embeddings[0]).slice(0, 5);
-        outputChannel.appendLine(`🔢 Sample values: [${firstEmbedding.join(', ')}]`);
-        
-        vscode.window.showInformationMessage(
-            `✅ Rust embedding test: Generated ${embeddings.length} embeddings`
-        );
-    } catch (error) {
-        outputChannel.appendLine(`❌ Rust embedding test failed: ${error}`);
-        vscode.window.showErrorMessage(`Rust embedding test failed: ${error}`);
-    }
-*/
-    });
-
   context.subscriptions.push(outputChannel);
 }
 

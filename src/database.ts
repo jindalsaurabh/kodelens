@@ -469,4 +469,13 @@ private cosineSimilarity(a: Float32Array, b: Float32Array): number {
     return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
+// In database.ts - compress large texts
+private compressText(text: string): Buffer {
+    if (text.length > 10000) {
+        // Use simple compression or truncation
+        return Buffer.from(text.substring(0, 10000) + "...");
+    }
+    return Buffer.from(text);
+}
+
 }
