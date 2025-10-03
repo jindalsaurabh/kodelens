@@ -20,6 +20,16 @@
   "contributes": {
     "commands": [
       {
+        "command": "kodelens.explainCode",
+        "title": "Kodelens: Explain this code",
+        "category": "Kodelens"
+      },
+      {
+        "command": "kodelens.explainCodeFromText", 
+        "title": "Explain code from text",
+        "category": "Kodelens"
+      },
+      {
         "command": "kodelens.parseApex",
         "title": "Kodelens: Parse Apex File"
       },
@@ -36,6 +46,15 @@
         "title": "KodeLens: Find All References"
       }
     ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "kodelens.explainCode",
+          "group": "Kodelens",
+          "when": "editorHasSelection && resourceExtname == .cls"
+        }
+      ]
+    },
     "configuration": {
       "title": "Kodelens",
       "properties": {

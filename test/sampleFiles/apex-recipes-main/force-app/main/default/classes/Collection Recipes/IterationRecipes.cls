@@ -41,4 +41,15 @@ public with sharing class IterationRecipes {
         }
         return records;
     }
+
+    public static Decimal calculateTotal(List<Order> orders) {
+    Decimal total = 0;
+    for(Order order : orders) {
+        total += order.Amount;
+    }
+    return total;
+}
+
+List<Account> accounts = [SELECT Id, Name FROM Account WHERE Type = 'Customer' LIMIT 10];
+
 }

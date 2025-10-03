@@ -14,6 +14,7 @@ import { registerFindReferencesCommand } from "./commands/findReferencesCommand"
 import { HybridEmbeddingService } from "./services/HybridEmbeddingService";
 import { ApexChunkExtractor } from "./extractors/ApexChunkExtractor";
 import { ProgressTracker } from './utils/ProgressTracker';
+import { registerExplainCodeCommand } from './commands/explainCodeCommand';
 
 let cache: LocalCache;
 let codeIndexer: CodeIndexer;
@@ -82,6 +83,7 @@ export async function activate(context: vscode.ExtensionContext) {
   registerAskQuestionCommand(context, outputChannel, cache, resultsProvider, embeddingService);
   registerParseWorkspaceCommand(context, outputChannel, cache, semanticIndexer, workspaceRoot, apexAdapter);
   registerFindReferencesCommand(context, outputChannel, cache, codeIndexer, resultsProvider, embeddingService);
+  registerExplainCodeCommand(context, cache, embeddingService);
   context.subscriptions.push(outputChannel);
 }
 
